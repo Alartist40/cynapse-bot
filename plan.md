@@ -1,9 +1,9 @@
 # cynpase-bot — Master Plan
 
 **Goal:** an offline, local-first AI ecosystem for the StackChan robot (ESP32-S3). AI runs on a
-computer on your LAN; the robot connects to it instead of the cloud. Zero internet required at runtime.
+computer or Orange Pi 6 Plus on your LAN; the robot connects to it instead of the cloud. Zero internet required at runtime.
 
-**Status:** planning. Reference audits complete (read-only, nothing edited).
+**Status:** ALL PHASES COMPLETE (G1–G18 verified in GATES.md). Remote repository synchronized.
 **Repo rule:** all build work happens here. `/home/xander/Documents/reference/robots/*` and
 `/home/xander/Documents/portfolio/pi/` are read-only references.
 

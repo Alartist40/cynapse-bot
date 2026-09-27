@@ -27,13 +27,16 @@
    ├── Audio Engine:
    │     ASR: Whisper.cpp
    │     TTS: Pocket-TTS (Zero-shot voice cloning) & Piper (ONNX)
-   ├── Personality & Memory:
+   ├── Personality & Mazzaroth Memory:
    │     Markdown Personas (SOUL.md, IDENTITY.md, TOOLS.md)
-   │     Dendrite Graph Memory (SQLite FTS5 + in-memory graph)
-   └── Monitoring & Dashboard:
-         Web Control Panel (GET /dashboard)
-         Live Telemetry Stream (/ws/monitor)
-         Camera Snapshots (GET /camera/latest.jpg)
+   │     Mazzaroth 4-Tier Memory Engine (Core, Semantic, Episodic, Working)
+   │     Cognitive Decay (Ebbinghaus) & Hebbian Synapse Reinforcement
+   │     3D Celestial Galaxy Spatial Clustering (SQLite FTS5)
+   ├── Monitoring, GUI & Mobile:
+   │     Native Desktop GUI (cynpase-gui) with 3D Galaxy Viewport
+   │     Mobile Companion PWA (GET /mobile) with Touch Joystick & Virtual Avatar
+   │     Web Control Panel (GET /dashboard) & Live Telemetry (/ws/monitor)
+   │     Camera Snapshots (GET /camera/latest.jpg)
 ```
 
 ---
@@ -46,30 +49,36 @@
 - **Dual TTS Engine:**
   - **Pocket-TTS:** Zero-shot voice cloning from `.wav` samples directly on CPU.
   - **Piper TTS:** Low-footprint standalone ONNX neural speech synthesis.
-- **Dendrite Memory Graph:** Interleaved SQLite graph memory from `cynapse-mini` retaining user interactions and facts.
+- **Mazzaroth Unified Memory Engine:** 4-tier cognitive taxonomy (Core, Semantic, Episodic, Working), Ebbinghaus retention decay, Hebbian links, SQLite FTS5 search, and 3D celestial orbital layout.
 - **Motion & Animation Engine:** Keyframe choreography for pan/tilt servos (-90°..90° / -30°..30°) and OLED facial expressions (`dance`, `nod`, `shake`, `wave`, `look_around`, `sleep`, `wake`).
 - **Official StackChan MCP Tools:** Head angles, RGB neon lights, and reminder timer management.
-- **Real-Time Web Dashboard:** Embedded single-page control panel with telemetry feeds and live camera view.
+- **Native Desktop GUI (`cynpase-gui`):** Real-time hardware control panel, pan/tilt sliders, live camera feed, transcript stream, and interactive 3D Mazzaroth galaxy visualizer.
+- **Mobile Companion PWA (`GET /mobile`):** Zero-install responsive mobile controller with 360° touch joystick, haptic vibration, push-to-talk voice bridge, and animated StackChan virtual face avatar mode.
 
 ---
 
 ## 3. Quick Start
 
-### Build & Run Locally
+### Build & Run Hub Daemon
 
 ```bash
-# Clone and build
+# Build release binaries
 cargo build --release
 
-# Run hub on default port 8000
+# Run the hub daemon on port 8000
 ./target/release/cynpase-bot --bind-addr 0.0.0.0:8000
 ```
 
-### Access Dashboard
-Open your browser at:
+### Launch Desktop GUI Application
+
+```bash
+# Run native desktop control panel
+cargo run --bin cynpase-gui
 ```
-http://localhost:8000/dashboard
-```
+
+### Access Mobile & Web Dashboards
+- **Mobile Companion App:** `http://<HUB_LAN_IP>:8000/mobile` (Tap *Add to Home Screen*)
+- **Web Dashboard:** `http://<HUB_LAN_IP>:8000/dashboard`
 
 ---
 
@@ -107,9 +116,13 @@ cynpase-bot/
 │   ├── audio.rs          # Pocket-TTS & Piper synthesis engines
 │   ├── config.rs         # Hub CLI parameters & default ports
 │   ├── dashboard.rs      # Web UI & /ws/monitor telemetry
+│   ├── gui/              # Native Desktop GUI (eframe / egui)
+│   ├── gui_main.rs       # cynpase-gui binary entrypoint
+│   ├── mazzaroth/        # Unified memory engine (4 tiers, FTS5, 3D gravity)
 │   ├── mcp.rs            # StackChan HAL MCP tools & custom registry
+│   ├── mobile.rs         # Mobile PWA generator & REST control APIs
 │   ├── ota.rs            # Local OTA JSON discovery endpoint
-│   ├── persona.rs        # SOUL / IDENTITY / Dendrite memory context
+│   ├── persona.rs        # SOUL / IDENTITY / Memory context
 │   ├── pipeline.rs       # 3-tier cascade and turn execution
 │   ├── protocol.rs       # Xiaozhi framing & message types
 │   ├── server.rs         # Axum WebSocket router & stream demuxer
@@ -117,14 +130,18 @@ cynpase-bot/
 │   └── vision.rs         # 0.3MP JPEG frame ingestion & snapshot API
 ├── data/persona/         # Markdown persona definition files
 ├── deploy/               # Systemd units & launcher scripts
-├── tests/                # Deterministic integration test suite
-└── GATES.md              # Observable completion verification gates
+├── mobile/               # Standalone mobile wrapper & Android packaging
+├── tests/                # 12 integration test suites (18 verified gates)
+└── GATES.md              # Quality gates & test verification ledger
 ```
 
 ---
 
 ## 7. Roadmap
 
-- [ ] **Desktop Control Panel:** Native GUI window application for desktop control and telemetry.
-- [ ] **Mobile App:** Cross-platform companion app (Flutter / Slint) for phone-based robot control and avatar streaming.
-- [ ] **Physical Hardware Verification:** Live on-device validation once StackChan hardware arrives.
+- [x] **Local OTA Discovery & Xiaozhi WebSocket Framing:** Sub-10s handshake, 16k in / 24k out Opus audio.
+- [x] **Audio & TTS Pipeline:** Pocket-TTS voice cloning + Piper ONNX synthesis on CPU.
+- [x] **Mazzaroth Memory Engine:** 4-tier taxonomy, SQLite FTS5, Ebbinghaus decay, 3D celestial layout.
+- [x] **Native Desktop Control Panel:** `cynpase-gui` with 3D constellation orbital viewport.
+- [x] **Mobile Companion App:** PWA with touch joystick, virtual avatar face, and push-to-talk.
+- [ ] **Physical Hardware Pre-Flight Verification:** Live robot check when hardware package is delivered.

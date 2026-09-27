@@ -2,6 +2,26 @@
 
 All notable changes to `cynpase-bot` will be documented in this file.
 
+## [0.3.0] - 2026-09-27
+
+### Added
+- **Native Desktop GUI Application (`src/gui/`, `src/gui_main.rs`):**
+  - High-performance native control panel binary (`cynpase-gui`) powered by `eframe`/`egui`.
+  - Pan/Tilt servo manual positioning sliders (-90°..+90° / -30°..+30°).
+  - Quick-trigger choreography panel (dance, nod, shake, wave, sleep, wake) and RGB LED controls.
+  - Real-time robot vision camera feed and conversation transcript.
+  - Interactive 3D Mazzaroth constellation viewport with orbit controls and node selection.
+- **Mobile Companion PWA & REST Control Suite (`src/mobile.rs`):**
+  - Zero-install responsive mobile controller served directly at `GET /mobile` and `GET /app`.
+  - 360° circular virtual touch joystick with real-time angle labels and haptic feedback.
+  - Animated StackChan avatar face mode rendered on HTML5 Canvas (kawaii blinking eyes, gaze following touch, emotional states).
+  - Push-to-talk voice bridge and real-time conversation feed.
+  - REST endpoints: `POST /api/robot/control`, `POST /api/chat/send`, `GET /api/status`, `GET /api/memory/celestial`.
+  - PWA manifest (`/manifest.json`) and service worker (`/service-worker.js`) for standalone home-screen app mode.
+  - Standalone packaging scaffolding and instructions in `mobile/`.
+- **Quality Gates Verification:**
+  - Added and verified gates G14–G18 in `GATES.md` with 100% automated test pass rate across 12 test suites.
+
 ## [0.2.0] - 2026-09-27
 
 ### Added
