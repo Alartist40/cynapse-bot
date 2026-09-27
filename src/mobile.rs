@@ -9,6 +9,7 @@ use serde_json::json;
 use crate::animation::AnimationLibrary;
 use crate::dashboard::TelemetryEvent;
 use crate::server::AppState;
+use tracing::warn;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct RobotControlRequest {
@@ -208,22 +209,34 @@ pub async fn handle_api_chat_audio(
     Extension(state): Extension<AppState>,
     body: axum::body::Bytes,
 ) -> Response {
-    if body.is_empty() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "empty audio body" }))).into_response();
+    if body.len() < 44 {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "audio body too small for valid WAV" }))).into_response();
+    }
+
+    // Validate WAV container header (magic bytes: RIFF .... WAVE)
+    if &body[0..4] != b"RIFF" || &body[8..12] != b"WAVE" {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "invalid audio container: must be RIFF/WAVE" }))).into_response();
     }
 
     let transcript = match state.pipeline.audio_engine.transcribe_wav(&body).await {
-        Ok(t) if !t.is_empty() => t,
-        _ => String::new(),
+        Ok(t) => t.trim().to_string(),
+        Err(e) => {
+            warn!("WAV transcription error: {}", e);
+            String::new()
+        }
     };
 
-    let user_text = if transcript.trim().is_empty() {
-        "Hello".to_string()
-    } else {
-        transcript
-    };
+    if transcript.is_empty() {
+        return (StatusCode::OK, Json(json!({
+            "status": "untranscribed",
+            "transcript": "",
+            "response": "No speech transcribed. Please ensure Whisper is installed or speak clearly.",
+            "replies_count": 0,
+            "audio_frames_count": 0
+        }))).into_response();
+    }
 
-    match state.pipeline.process_text_turn(&user_text).await {
+    match state.pipeline.process_text_turn(&transcript).await {
         Ok(turn) => {
             for reply in &turn.messages {
                 if let crate::protocol::ServerMessage::Mcp { .. } = reply {
@@ -238,7 +251,7 @@ pub async fn handle_api_chat_audio(
 
             (StatusCode::OK, Json(json!({
                 "status": "ok",
-                "transcript": user_text,
+                "transcript": transcript,
                 "response": turn.spoken_text,
                 "replies_count": turn.messages.len(),
                 "audio_frames_count": turn.audio_frames.len()
@@ -1061,27 +1074,79 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
         }
 
         let isRecording = false;
-        let mediaRecorder = null;
-        let audioChunks = [];
+        let audioContext = null;
+        let audioInputNode = null;
+        let audioProcessorNode = null;
+        let audioStream = null;
+        let recordedPcmSamples = [];
+
+        function encodeWavBlob(samples, sampleRate) {
+            const buffer = new ArrayBuffer(44 + samples.length * 2);
+            const view = new DataView(buffer);
+
+            // "RIFF"
+            view.setUint32(0, 0x52494646, false);
+            // File length minus 8 bytes
+            view.setUint32(4, 36 + samples.length * 2, true);
+            // "WAVE"
+            view.setUint32(8, 0x57415645, false);
+            // "fmt " chunk
+            view.setUint32(12, 0x666d7420, false);
+            // Chunk size: 16
+            view.setUint32(16, 16, true);
+            // Format: 1 (PCM)
+            view.setUint16(20, 1, true);
+            // Channels: 1 (mono)
+            view.setUint16(22, 1, true);
+            // Sample rate
+            view.setUint32(24, sampleRate, true);
+            // Byte rate: sampleRate * 1 * 2
+            view.setUint32(28, sampleRate * 2, true);
+            // Block align: 2
+            view.setUint16(32, 2, true);
+            // Bits per sample: 16
+            view.setUint16(34, 16, true);
+            // "data" chunk
+            view.setUint32(36, 0x64617461, false);
+            // Data chunk length
+            view.setUint32(40, samples.length * 2, true);
+
+            // Write 16-bit linear PCM samples
+            let offset = 44;
+            for (let i = 0; i < samples.length; i++, offset += 2) {
+                const s = Math.max(-1, Math.min(1, samples[i]));
+                view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
 
         async function startPtt(e) {
             e.preventDefault();
             isRecording = true;
-            audioChunks = [];
+            recordedPcmSamples = [];
             document.getElementById('pttButton').classList.add('recording');
-            document.getElementById('pttLabel').innerText = 'Recording Voice... (Release to send)';
+            document.getElementById('pttLabel').innerText = 'Recording Voice (16kHz PCM)...';
             haptic();
 
             try {
                 if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            audioChunks.push(event.data);
+                    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    audioContext = new AudioCtx({ sampleRate: 16000 });
+                    audioInputNode = audioContext.createMediaStreamSource(audioStream);
+                    audioProcessorNode = audioContext.createScriptProcessor(4096, 1, 1);
+
+                    audioProcessorNode.onaudioprocess = (event) => {
+                        if (!isRecording) return;
+                        const inputData = event.inputBuffer.getChannelData(0);
+                        for (let i = 0; i < inputData.length; i++) {
+                            recordedPcmSamples.push(inputData[i]);
                         }
                     };
-                    mediaRecorder.start(100);
+
+                    audioInputNode.connect(audioProcessorNode);
+                    audioProcessorNode.connect(audioContext.destination);
                 }
             } catch (err) {
                 console.warn('Microphone error:', err);
@@ -1097,17 +1162,29 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
             document.getElementById('pttLabel').innerText = 'Processing Speech Offline...';
             haptic();
 
-            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                mediaRecorder.onstop = async () => {
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+            if (audioProcessorNode && audioInputNode) {
+                try {
+                    audioInputNode.disconnect();
+                    audioProcessorNode.disconnect();
+                } catch(err) {}
+            }
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                const sampleRate = audioContext.sampleRate || 16000;
+                try { audioContext.close(); } catch(err) {}
+
+                if (recordedPcmSamples.length > 0) {
+                    const wavBlob = encodeWavBlob(recordedPcmSamples, sampleRate);
                     try {
                         const res = await fetch('/api/chat/audio', {
                             method: 'POST',
                             headers: { 'Content-Type': 'audio/wav' },
-                            body: audioBlob
+                            body: wavBlob
                         });
                         const data = await res.json();
-                        if (data.transcript) {
+                        if (data.transcript && data.transcript.trim()) {
                             addChatBubble(data.transcript, 'user');
                         }
                         if (data.response) {
@@ -1116,15 +1193,10 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
                     } catch(err) {
                         addChatBubble('Error: Hub STT unreachable', 'bot');
                     }
-                    document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
-                };
-                try {
-                    mediaRecorder.stop();
-                    mediaRecorder.stream.getTracks().forEach(track => track.stop());
-                } catch(err) {}
-            } else {
-                document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
+                }
             }
+
+            document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
         }
 
         const celCanvas = document.getElementById('celestialCanvas');

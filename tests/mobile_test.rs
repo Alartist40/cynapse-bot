@@ -245,7 +245,18 @@ async fn test_mobile_chat_and_status() {
     assert_eq!(cel_resp["status"], "ok");
     assert!(cel_resp["nodes"].as_array().unwrap().len() >= 4);
 
-    // 4. Audio Chat API (POST /api/chat/audio)
+    // 4. Audio Chat API: Non-RIFF/WAV payload must be rejected with 400
+    let bad_req = Request::builder()
+        .method("POST")
+        .uri("/api/chat/audio")
+        .header("Content-Type", "audio/wav")
+        .body(axum::body::Body::from(b"not-a-valid-riff-wav-container-bytes".to_vec()))
+        .unwrap();
+
+    let res = app.clone().oneshot(bad_req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST, "Non-RIFF audio payload must be rejected with 400");
+
+    // 5. Audio Chat API (POST /api/chat/audio) with valid WAV: Fail-if-Hello gate
     let pcm_sample: Vec<i16> = (0..1600).map(|i| ((i as f32 * 0.1).sin() * 5000.0) as i16).collect();
     let wav_bytes = cynpase_bot::audio::AudioEngine::pcm_to_wav_bytes(&pcm_sample, 16000);
     let req = Request::builder()
@@ -259,6 +270,13 @@ async fn test_mobile_chat_and_status() {
     assert_eq!(res.status(), StatusCode::OK);
     let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
     let audio_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(audio_resp["status"], "ok");
-    assert!(audio_resp["response"].is_string());
+    
+    // Assert that untranscribed audio never fabricates a fake "Hello" user turn
+    if audio_resp["status"] == "untranscribed" {
+        assert_eq!(audio_resp["transcript"], "", "Untranscribed audio must NOT fabricate transcript");
+        assert_ne!(audio_resp["transcript"], "Hello", "FAIL-IF-HELLO: Must not fall back to fake 'Hello'");
+    } else {
+        assert_eq!(audio_resp["status"], "ok");
+        assert_ne!(audio_resp["transcript"], "Hello");
+    }
 }

@@ -110,5 +110,11 @@
   EXPECT: test_audio_pipeline ... ok && test_mcp_action_dispatch ... ok
   EVIDENCE: test test_audio_pipeline ... ok (0.02s) / test test_mcp_action_dispatch ... ok (0.00s)
 
+- [x] G23: Audio PTT endpoint container verification (rejects non-RIFF/WAV with 400) & Fail-if-Hello gate on untranscribed audio
+  CHECK: cargo test --test mobile_test test_mobile_chat_and_status -- --nocapture
+  EXPECT: test_mobile_chat_and_status ... ok
+  EVIDENCE: test test_mobile_chat_and_status ... ok (0.00s)
+
+
 
 

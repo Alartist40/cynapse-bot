@@ -22,7 +22,7 @@ impl Default for PersonaConfig {
             name: "CynapseBot".to_string(),
             identity: "You are CynapseBot, an embodied desktop companion robot running locally.".to_string(),
             soul: "Friendly, helpful, witty, and concise. You love moving your servos and reacting to the user.".to_string(),
-            tools: "Available tools: self.robot.set_head_angles, self.robot.set_led_color, play_animation, self.robot.create_reminder, emergency_stop.".to_string(),
+            tools: "Available native tools: self.robot.set_head_angles, self.robot.get_head_angles, self.robot.set_led_color, self.robot.create_reminder, self.robot.get_reminders, self.robot.stop_reminder.".to_string(),
             voice: "alba".to_string(),
             persona_dir: Some(PathBuf::from("data/persona")),
         }

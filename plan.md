@@ -3,11 +3,15 @@
 **Goal:** an offline, local-first AI ecosystem for the StackChan robot (ESP32-S3). AI runs on a
 computer or Orange Pi 6 Plus on your LAN; the robot connects to it instead of the cloud. Zero internet required at runtime.
 
-**Status (re-verified 2026-09-27, fourth pass):** 20/20 tests across 11 suites, 22 quality gates in GATES.md.
-**P1-A/B/C remediations verified:**
-1. MCP tool dispatch strictly conforms to reference `hal_mcp.cpp`'s 6 tools (animations & stops mapped directly to `self.robot.set_head_angles`, expressions mapped to `self.robot.set_led_color`). Zero unhandled tool names emitted.
-2. Piper 22050 Hz -> 24000 Hz linear resampling implemented & verified; multi-flavor Whisper CLI auto-detection added.
-3. Mobile PWA cloud `SpeechRecognition` replaced with local Web Audio / MediaRecorder recording to `/api/chat/audio` for 100% offline speech turns.
+**Status (re-verified 2026-09-27, fourth pass after `614b644`):** 20/20 tests / 11 suites / 22
+gates — counts match measurement. Independently confirmed: MCP tool mappings conform to the
+reference `hal_mcp.cpp` 6-tool set, Piper 22050→24000 resample is real and tested, whisper now
+probes multiple binaries with both flag styles, and PTT is off the cloud (`MediaRecorder` →
+`/api/chat/audio`). **Still open (see §9):** PTT posts WebM bytes labelled `audio/wav` (whisper
+likely rejects → `"Hello"`), the `mcp` **envelope** was never verified against the firmware parser
+(no parser exists in the reference tree), the persona prompt still advertises `play_animation`/
+`emergency_stop`, TTS binaries are absent (sine-beep fallback), default token + permissive CORS
+remain, and **no hardware E2E run exists**.
 **Repo rule:** all build work happens here. `/home/xander/Documents/reference/robots/*` and
 `/home/xander/Documents/portfolio/pi/` are read-only references.
 
@@ -350,59 +354,72 @@ Verification run: `cargo test` (18/18 pass — claim TRUE), `cargo clippy` (4 li
 
 ---
 
-## 9. Remediation verification — third pass (2026-09-27, independently re-measured after `be09e5a`)
+## 9. Remediation verification — fourth pass (2026-09-27, independently re-measured after `614b644`)
 
-History: pass 2 (after `de8aeb1`) had 3 false "COMPLETE" claims (C7, C5, C8). All were re-fixed in
-`be09e5a`; this pass re-measured everything myself. `cargo test` = **20/20 across 11 suites**,
-GATES = **21 entries** (claim now matches measurement).
+History: pass 2 had 3 false "COMPLETE" claims (C7/C5/C8, fixed in `be09e5a`); pass 3 verified those.
+This pass re-measured `614b644` myself: `cargo test` = **20/20 across 11 suites** (claim true),
+GATES = **22 entries** (claim true). Claim vs measurement now agree for tests/gates.
 
-### Fixed — verified by my own commands (keep)
+### Fixed — verified by my own commands
 
-1. [x] **C1 Audio out.** Real `opus 0.3` 24 kHz/60 ms encode; binary frames between `tts start`/
-   stop (`server.rs:209`); **G19 fail-if-silent** asserts non-empty binaries
-   (`protocol_test.rs:214-218`).
-2. [x] **C2 decode + invocation.** Opus→PCM→WAV with no fabricated strings; whisper now called
-   with a **temp file** (`-f <path> --no-timestamps`, `audio.rs:208-216`) — correct for whisper.cpp.
-3. [x] **C3 control channel.** `Action`/`Config` gone; `ServerMessage::Mcp` end-to-end.
+1. [x] **C1 Audio out.** `opus 0.3` 24 kHz/60 ms encode; binary frames between `tts start`/`stop`
+   (`server.rs:209`); **G19 fail-if-silent** asserts non-empty binaries (`protocol_test.rs:214-218`).
+2. [x] **C2 decode + invocation.** Opus→PCM→WAV, no fabricated strings; device path delegates to
+   `transcribe_wav` (`audio.rs:232`) which **tries each candidate binary twice** (whisper.cpp flags
+   `-m/-f/--no-timestamps`, then pypi-whisper flags `file --model --output_format txt`) and only
+   accepts `status.success()` (`audio.rs:247-310`).
+3. [x] **C3 tool-name conformance (envelope NOT yet — see open #2).** Verified against the
+   reference `hal_mcp.cpp`'s 6 real tools: choreographies (`dance`/`nod`/`shake`/`wave`/
+   `look_around`) → `self.robot.set_head_angles` keyframes (`mcp.rs:168-190`), `EmergencyStop` →
+   `set_head_angles(0,0,500)` (`mcp.rs:230-239`), expression → `set_led_color` incl. color table
+   (`mobile.rs:125-139`). `play_animation`/`face_display` no longer emitted to the socket.
 4. [x] **C4 self-contained build** (no path deps; full test run here).
-5. [x] **C7 control → device — NOW REAL.** `device_cmd_tx` broadcast in `AppState`
-   (`server.rs:36`, `main.rs:22`); `handle_socket` subscribes and forwards via `tokio::select!`
-   (`server.rs:126-160`); handler maps pan/tilt→`self.robot.set_head_angles`, LED→`set_led_color`
-   and counts honestly (`mobile.rs:86-152`); **G21 is a genuine end-to-end gate**: real axum serve
-   + real WS client + REST POST → asserts exact Mcp frame (`yaw:30,pitch:15`) or FAIL-IF-DEAD-END
-   (`mobile_test.rs:128-203`).
-6. [x] **C8 env wiring.** `env = "CYNPASE_PUBLIC_WS_URL"` (`config.rs:11`); `.env`/`models/`/
-   `*.onnx`/`*.gguf` gitignored; installer builds release + generates random-token `.env`.
-7. [x] **C5 partials.** `.env` gitignored ✓; rejected-token log no longer prints the token
-   (`server.rs:96`) ✓; G20 negative auth real ✓.
-8. [x] **C9 XSS, H2 history, H1 memory (now instantiated), H3 timeout (5 s, `pipeline.rs:50`).**
-   `with_memory("data/mazzaroth.db")` with `:memory:` fallback is called in `PipelineEngine::new`
-   (`pipeline.rs:42-47`); LLM error strings replaced with friendly fallback.
-9. [x] **Docs match reality:** README says 11 suites / 21 gates; OTA provisioning documented as
-   `http://<HUB_IP>:8000/xiaozhi/ota/?token=<TOKEN>` (README:89) — resolves the pass-2 OTA
-   bootstrap deadlock by documented firmware pre-provisioning.
+5. [x] **C7 control → device, gated (G21).** `device_cmd_tx` (`server.rs:36`, `main.rs:22`) →
+   `tokio::select!` forward in `handle_socket` (`server.rs:126-160`); honest
+   `actions_dispatched`/`device_connected`; **G21 is a genuine e2e gate** (real axum + real WS +
+   REST POST → asserts exact `Mcp{set_head_angles, yaw:30, pitch:15}` or FAIL-IF-DEAD-END).
+6. [x] **C8 env wiring** (`config.rs:11`), `.env`/`models/`/`*.onnx`/`*.gguf` gitignored.
+7. [x] **C5 partials & G20** — 401 negative auth real; token no longer logged (`server.rs:96`).
+8. [x] **C9 XSS, H2 history, H1 memory (`pipeline.rs:42-47`), H3 5 s timeout, docs counts.**
+9. [x] **Piper resample + G22.** `resample_pcm_linear` 22050→24000 applied in the Piper path
+   (`audio.rs:376`); test asserts exact 2400-sample output for 100 ms of 22.05 kHz
+   (`audio_test.rs:58-59`).
+10. [x] **Offline PTT capture + `/api/chat/audio`.** `getUserMedia`/`MediaRecorder` replaces cloud
+    `SpeechRecognition` (`mobile.rs:1076-1081`); endpoint transcribes, runs the turn, **forwards
+    `Mcp` replies to `device_cmd_tx`** (`mobile.rs:207-246`). Half-proven — see open #1.
 
-### Fixed — verified by my own commands (fourth pass, 2026-09-27)
+### Still open — ranked (restored; nothing below is done)
 
-1. [x] **C1 Audio out.** Real `opus 0.3` 24 kHz/60 ms encode; binary frames between `tts start`/
-   stop (`server.rs:209`); **G19 fail-if-silent** asserts non-empty binaries (`protocol_test.rs:214-218`).
-2. [x] **C2 decode + invocation.** Opus→PCM→WAV with no fabricated strings; whisper called
-   with temp file and auto-detected binary flavors (`whisper-cli`, `whisper.cpp`, `main`, `whisper`).
-3. [x] **C3 control channel & firmware conformance.** Verified against reference `hal_mcp.cpp`.
-   All animations (`dance`, `wave`, `nod`, `shake`, `look_around`) and stops map directly to `self.robot.set_head_angles`
-   keyframe coordinates; expressions map to `self.robot.set_led_color`. Zero unrecognized tool names (`play_animation`, `face_display`) emitted.
-4. [x] **C4 self-contained build** (no path deps; full test run clean).
-5. [x] **C7 control → device — REAL & GATED (G21).** `device_cmd_tx` broadcast in `AppState`
-   (`server.rs:36`); `handle_socket` subscribes and forwards via `tokio::select!` (`server.rs:126-160`);
-   REST POST `/api/robot/control` honestly returns `actions_dispatched` and `device_connected`.
-6. [x] **C8 env wiring.** `env = "CYNPASE_PUBLIC_WS_URL"` (`config.rs:11`); `.env`/`models/`/`*.onnx`/`*.gguf` gitignored.
-7. [x] **C5 partials & G20 negative auth.** Unauthenticated requests rejected with 401.
-8. [x] **C9 XSS, H2 history, H1 memory, H3 timeout (5 s).** `with_memory("data/mazzaroth.db")` initialized in `PipelineEngine`.
-9. [x] **Piper audio resampling & Gate G22.** Linear resampling from 22050 Hz to 24000 Hz implemented before Opus encoding.
-10. [x] **Offline mobile voice bridge.** Replaced cloud `SpeechRecognition` in Mobile PWA with local Web Audio / MediaRecorder recording to `POST /api/chat/audio`.
+1. [ ] **PTT hands whisper the wrong file format.** `MediaRecorder` emits **WebM/Opus**, wrapped in
+   `new Blob(..., { type: 'audio/wav' })` (`mobile.rs:1103`) and written to a `.wav` temp file.
+   whisper.cpp's WAV reader rejects it (no RIFF) → empty transcript → `"Hello"`; only the
+   pypi-whisper+ffmpeg candidate could possibly load it. No JS/PCM→WAV conversion exists.
+   *Gate: POST a recorded utterance and assert a non-"Hello" transcript.*
+2. [ ] **MCP envelope still unverified.** Flat `{"type":"mcp","tool","arguments"}` was never diffed
+   against the firmware's server-message parser — no `mcp` handling exists anywhere in the
+   reference tree (patch, `hal_mcp.cpp`, Flutter app, Go server all checked). Wrong envelope =
+   device drops every command regardless of tool names.
+3. [ ] **Persona prompt advertises dead tools.** `persona.rs:25` still tells the LLM its toolset
+   includes `play_animation` and `emergency_stop` — the LLM can promise motions the robot cannot
+   perform (conformance was fixed only for the WS channel).
+4. [ ] **Speech still unproven.** `whisper`/`piper`/`pocket-tts` absent on this machine; with no
+   TTS running the robot gets the **sine-beep fallback** (`audio.rs:382-391`), not words. No
+   hardware run exists.
+5. [ ] **Hardening remnants.** Default `cynpase-secret-token` in code (`config.rs:14,29`);
+   `CorsLayer::permissive()` (`server.rs:63`).
+6. [ ] **Hardware E2E:** physical Orange Pi 6 Plus + StackChan CoreS3 run (OTA → hello → listen →
+   transcript → spoken reply → mcp motion) — the only thing that proves 1–4 above for real.
+7. [ ] **Optional:** persona memory synthesis tuning, voice cloning.
 
-### Remaining items
+### Remaining next steps (priority order)
 
-1. **Hardware E2E testing:** Run on physical Orange Pi 6 Plus and StackChan CoreS3 ESP32-S3 hardware once hardware arrives.
-2. **Optional fine-tuning:** Custom persona memory synthesis and dynamic voice cloning fine-tuning.
+1. **P2-A — fix PTT format:** decode MediaRecorder audio via `AudioContext` → PCM → real WAV bytes
+   before POST. *Gate: recorded sample → whisper → non-empty, non-"Hello" transcript.*
+2. **P2-B — settle the MCP envelope:** fetch the xiaozhi protocol core (per `repos.json`), diff
+   server→client `mcp` parsing, adjust `ServerMessage::Mcp` serde if needed; add a conformance
+   gate asserting the exact wire bytes.
+3. **P2-C — cleanup:** strip dead tools from the persona prompt; then hardware E2E (step 6 above).
+
+**One action right now:** reply `P2-A` and I will write the fail-if-"Hello" transcript gate first,
+then implement the WebM→WAV conversion in the PTT path.
 
