@@ -72,15 +72,9 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         emotion: Option<String>,
     },
-    Action {
-        action: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        expression: Option<String>,
-    },
-    Config {
-        audio_params: AudioParams,
-        #[serde(default)]
-        wake_word: Option<String>,
+    Mcp {
+        tool: String,
+        arguments: serde_json::Value,
     },
     Goodbye,
 }

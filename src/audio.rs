@@ -104,6 +104,40 @@ impl AudioEngine {
         Ok(opus_frames)
     }
 
+    /// Encode 16 kHz linear PCM s16le samples into 60 ms Opus frames (960 samples per frame)
+    pub fn encode_16k_pcm_to_opus(pcm_samples: &[i16]) -> anyhow::Result<Vec<Vec<u8>>> {
+        if pcm_samples.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut encoder = Encoder::new(16000, Channels::Mono, Application::Voip)?;
+        let frame_size = 960; // 60ms at 16kHz = 960 samples
+        let mut opus_frames = Vec::new();
+        let mut out_buf = vec![0u8; 4000];
+
+        for chunk in pcm_samples.chunks(frame_size) {
+            let mut padded_chunk;
+            let slice = if chunk.len() < frame_size {
+                padded_chunk = chunk.to_vec();
+                padded_chunk.resize(frame_size, 0);
+                &padded_chunk[..]
+            } else {
+                chunk
+            };
+
+            match encoder.encode(slice, &mut out_buf) {
+                Ok(len) => {
+                    opus_frames.push(out_buf[..len].to_vec());
+                }
+                Err(e) => {
+                    error!("Opus encode error on 16k 60ms chunk: {}", e);
+                }
+            }
+        }
+
+        Ok(opus_frames)
+    }
+
     /// Convert raw linear PCM bytes (s16le) to i16 slice
     pub fn pcm_bytes_to_i16(bytes: &[u8]) -> Vec<i16> {
         bytes

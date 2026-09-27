@@ -10,8 +10,8 @@ use tracing::info;
 
 pub enum PipelineTurnResult {
     FastAction {
-        action: String,
-        expression: Option<String>,
+        tool: String,
+        arguments: serde_json::Value,
         reply_text: String,
     },
     LlmReply {
@@ -50,24 +50,39 @@ impl PipelineEngine {
     /// Fast rule tier 1 matching
     pub fn try_fast_action(&self, input: &str) -> Option<PipelineTurnResult> {
         if let Some(hw_action) = McpDispatcher::parse_command_text(input) {
-            match hw_action {
-                HardwareAction::EmergencyStop => Some(PipelineTurnResult::FastAction {
-                    action: "stop".to_string(),
-                    expression: Some("neutral".to_string()),
-                    reply_text: "Stopping all movement immediately.".to_string(),
-                }),
-                HardwareAction::PlayAnimation { animation } => Some(PipelineTurnResult::FastAction {
-                    action: format!("play_{}", animation),
-                    expression: Some("happy".to_string()),
-                    reply_text: format!("Playing {} animation.", animation),
-                }),
-                HardwareAction::MoveServo { pan, tilt } => Some(PipelineTurnResult::FastAction {
-                    action: format!("servo_{}_{}", pan, tilt),
-                    expression: Some("curious".to_string()),
-                    reply_text: "Adjusting head position.".to_string(),
-                }),
-                _ => None,
-            }
+            let (tool, args, reply_text) = match hw_action {
+                HardwareAction::EmergencyStop => (
+                    "self.robot.set_head_angles".to_string(),
+                    json!({ "yaw": 0, "pitch": 0, "speed": 500 }),
+                    "Stopping all movement immediately.".to_string(),
+                ),
+                HardwareAction::MoveServo { pan, tilt } => (
+                    "self.robot.set_head_angles".to_string(),
+                    json!({ "yaw": pan, "pitch": tilt, "speed": 150 }),
+                    "Adjusting head position.".to_string(),
+                ),
+                HardwareAction::SetLedColor { red, green, blue } => (
+                    "self.robot.set_led_color".to_string(),
+                    json!({ "red": red, "green": green, "blue": blue }),
+                    "Setting LED color.".to_string(),
+                ),
+                HardwareAction::PlayAnimation { ref animation } => (
+                    "play_animation".to_string(),
+                    json!({ "name": animation }),
+                    format!("Playing {} animation.", animation),
+                ),
+                _ => (
+                    "self.robot.get_head_angles".to_string(),
+                    json!({}),
+                    "Checking robot status.".to_string(),
+                ),
+            };
+
+            Some(PipelineTurnResult::FastAction {
+                tool,
+                arguments: args,
+                reply_text,
+            })
         } else {
             None
         }
@@ -85,8 +100,8 @@ impl PipelineEngine {
         // 2. Check Tier 1 Fast Actions
         if let Some(fast) = self.try_fast_action(text) {
             match fast {
-                PipelineTurnResult::FastAction { action, expression, reply_text } => {
-                    messages.push(ServerMessage::Action { action, expression });
+                PipelineTurnResult::FastAction { tool, arguments, reply_text } => {
+                    messages.push(ServerMessage::Mcp { tool, arguments });
                     messages.push(ServerMessage::Tts {
                         state: "start".to_string(),
                         text: Some(reply_text.clone()),

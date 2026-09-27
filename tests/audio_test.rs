@@ -37,4 +37,19 @@ async fn test_audio_pipeline() {
             .expect("Synthesized frame must be valid Opus");
         assert_eq!(samples, 1440);
     }
+
+    // 4. Test client 16 kHz Opus decoding (robot mic uplink)
+    let pcm_16k: Vec<i16> = (0..960 * 2)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect();
+    let client_opus = AudioEngine::encode_16k_pcm_to_opus(&pcm_16k).unwrap();
+    assert_eq!(client_opus.len(), 2);
+
+    let decoded_client_pcm = AudioEngine::decode_client_opus_frames(&client_opus).unwrap();
+    assert_eq!(decoded_client_pcm.len(), 960 * 2, "Decoded 16kHz PCM length must match input");
+
+    // 5. Test that transcribe never produces fabricated strings
+    let transcript = engine.transcribe(&client_opus).await.unwrap();
+    assert!(!transcript.contains("Audio input"), "Transcribe must NOT fabricate fake 'Audio input' string");
+    assert!(!transcript.contains("packets"), "Transcribe must NOT fabricate fake 'packets' string");
 }

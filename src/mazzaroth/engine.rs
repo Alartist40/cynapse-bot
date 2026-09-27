@@ -32,6 +32,14 @@ impl MazzarothEngine {
         })
     }
 
+    pub fn store(&self) -> &MazzarothStore {
+        &self.store
+    }
+
+    pub fn get_all_nodes_sync(&self) -> Result<Vec<MemoryNode>> {
+        self.store.load_all()
+    }
+
     fn now_secs() -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)

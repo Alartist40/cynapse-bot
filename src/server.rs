@@ -167,19 +167,6 @@ async fn handle_socket(
                             error!("Failed to send server hello: {}", e);
                             break;
                         }
-
-                        // Push runtime config to device (NVS persistence)
-                        let runtime_config = ServerMessage::Config {
-                            audio_params: AudioParams {
-                                format: "opus".to_string(),
-                                sample_rate: 24000,
-                                channels: 1,
-                                frame_duration: 60,
-                            },
-                            wake_word: Some("hi_stackchan".to_string()),
-                        };
-                        let cfg_json = serde_json::to_string(&runtime_config).unwrap();
-                        let _ = sender.send(Message::Text(cfg_json.into())).await;
                     }
                     Ok(ClientMessage::Listen { state: listen_state, .. }) => {
                         info!(listen_state = %listen_state, "Received listen control event");

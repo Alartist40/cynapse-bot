@@ -157,8 +157,7 @@ async fn test_voice_turn_streams_binary_opus_audio() {
         .await
         .unwrap();
 
-    // Consume server hello and runtime config
-    let _ = ws_stream.next().await;
+    // Consume server hello
     let _ = ws_stream.next().await;
 
     // 2. Send listen start

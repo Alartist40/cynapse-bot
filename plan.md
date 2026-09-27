@@ -3,7 +3,11 @@
 **Goal:** an offline, local-first AI ecosystem for the StackChan robot (ESP32-S3). AI runs on a
 computer or Orange Pi 6 Plus on your LAN; the robot connects to it instead of the cloud. Zero internet required at runtime.
 
-**Status:** ALL PHASES COMPLETE (G1–G18 verified in GATES.md). Remote repository synchronized.
+**Status (audited 2026-09-27): BUILD SKELETON YES, ROBOT NOT WORKING.** 18/18 tests pass and the
+xiaozhi WS handshake/listen/abort loop is real — but the voice loop is broken end-to-end (no Opus
+decode, TTS audio never sent to the device, actions sent as a message type the firmware ignores),
+the GUI is non-functional theater, a fresh clone does not compile, and deploy is broken. See **§8
+Audit** for evidence, severity, and the fixed next steps.
 **Repo rule:** all build work happens here. `/home/xander/Documents/reference/robots/*` and
 `/home/xander/Documents/portfolio/pi/` are read-only references.
 
@@ -214,31 +218,32 @@ provisioning (StackChan already provisions WiFi), streaming ASR, multi-robot orc
 
 ---
 
-## 5. Roadmap
+## 5. Roadmap — reality check (audited 2026-09-27)
 
-Each phase has an observable acceptance outcome. `GATES.md` gets written (CHECK/EXPECT) before
-phase 1 implementation starts.
+Claimed "ALL PHASES COMPLETE". Evidence says otherwise:
 
-- **Phase 0 — Decisions** (~10 min): hub host, hub language, first model. (Section 6, open items.)
-  *Outcome: all three chosen and written into this file.*
-- **Phase 1 — The handshake spike** (~half a day): local OTA JSON + xiaozhi WS server that answers
-  `hello` and echoes frames; point StackChan's `CONFIG_OTA_URL` at it.
-  *Outcome: StackChan connects to the hub on LAN and the session stays up (no MQTT fallback).*
-- **Phase 2 — Voice loop** (~1–2 days): utterance → whisper → Leafcutter → Piper → Opus → speaker.
-  Text-first, then audio.
-  *Outcome: ask a question offline, hear a local-model answer on the robot.*
-- **Phase 3 — Personality + tools** (~2–3 days): persona files, Dendrite memory, 3-tier cascade,
-  `{"action","expression"}` channel (servos/face), `talk_*` face sync.
-  *Outcome: "stop"/"wave" execute in <100 ms without touching the LLM; memory persists across runs.*
-- **Phase 4 — Hardening** (~1–2 days): token auth on the device socket, runtime config push,
-  monitor WS for a minimal dashboard, reconnect/backoff, logs.
-  *Outcome: unauthenticated client refused; hub restart recovers the robot without reflashing.*
-- **Phase 5 — Offline proof** (half a day): unplug router, run from AP/fallback, full conversation.
-  *Outcome: complete voice interaction with zero internet.*
+| Phase | Claim | Reality (evidence) |
+|---|---|---|
+| 0 Decisions | ✅ done | ✅ Rust + Orange Pi + Leafcutter seam chosen |
+| 1 Handshake spike | ✅ done | ✅ **REAL.** OTA JSON (`src/ota.rs`) + WS `hello`/`listen`/`abort` + session buffering work; `protocol_test` proves it over a live socket. Caveats: auth token served in the clear (§8-C5), single session slot |
+| 2 Voice loop | ✅ done | ❌ **BROKEN.** No Opus decode → whisper gets raw Opus bytes (`audio.rs:61-74`) → fabricated transcripts (`audio.rs:78-79`); `synthesize()` is **never called in the turn path** and the hub sends **zero binary audio frames** (`server.rs` has no `Message::Binary` send) → **robot is silent**; `action` message type is not xiaozhi → device drops Tier‑1 commands |
+| 3 Personality + tools | ✅ done | ❌ **PARTIAL/THEATER.** Persona loads, but Mazzaroth engine is never instantiated in `src/` (only tests), `with_memory` never called in prod, no chat history in the LLM payload (`pipeline.rs:104-118`), MCP dispatcher is dead code (`server.rs:228-230` logs and drops) |
+| 4 Hardening | ✅ done | ❌ **PARTIAL.** WS token check exists, but token is fetched by anyone via unauthenticated `GET /xiaozhi/ota/` with `CorsLayer::permissive()`, default secret committed (`config.rs:14`); no runtime config push, no reconnect handling, no negative auth test |
+| 5 Offline proof | implied ✅ | ❌ never done — no hardware pre-flight (README roadmap admits this one) |
+
+**Own-goal note:** §4 said "Deliberately NOT built (YAGNI): mobile app, dashboard UI" — the build
+added a 1105-line mobile PWA, a native GUI, and a galaxy visualizer *first*, and the core voice
+loop is still broken. Scope was inverted against this plan.
+
+**Gates status:** G1–G18 commands all pass (verified: `cargo test` = 18/18), but several gates
+prove the wrong thing: G6 "valid TTS audio frames" asserts mock fallback bytes (`audio.rs:185-188`),
+G5 passes with a dead LLM, G4 "Opus roundtrip" moves garbage bytes. Gates must be rewritten to
+fail when the robot is silent (see §9).
 
 ---
 
-## 6. Open decisions (blocking Phase 1)
+## 6. Decisions — RESOLVED by the build: Rust, Orange Pi 6 Plus, Leafcutter at `127.0.0.1:8081`,
+### xiaozhi-protocol server (original recommendation kept)
 
 1. **Hub host** — this PC (GPU possible, always on?) vs the Pi 5 (known-good, but CPU-bound).
    *Recommendation: PC if it stays on; Leafcutter runs anywhere.*
@@ -266,3 +271,102 @@ plain `ws://` on a trusted LAN + token).
 - Input validation + error handling at every network edge; no secrets in the repo.
 - One runnable check for every non-trivial logic piece; `GATES.md` evidence before any "done".
 - Local-first means *no internet at runtime* — NTP/OTA/telemetry either local or disabled.
+
+---
+
+## 8. Audit findings (2026-09-27, independent — evidence re-measured, not trusted)
+
+Verification run: `cargo test` (18/18 pass — claim TRUE), `cargo clippy` (4 lib warnings),
+`git ls-files` (53 files), greps for every claim below. Claims "12 test suites" (there are 11) and
+"100% test coverage" (**false**: 0 unit tests in `src/`, no coverage tool ever run) are retracted.
+
+### What genuinely works (keep, do not regress)
+
+1. **xiaozhi WS skeleton** — token-gated connect, `hello` → server-hello, `listen start/stop`
+   state machine, `abort` clears buffer, ping/pong, session buffering (`server.rs:118-264`).
+2. **Local OTA JSON** returns `{websocket:{url,token,version}}` (`ota.rs:18-27`) — right shape.
+3. **Dashboard + `/ws/monitor`** — real HTML serve and WS broadcast round-trip.
+4. **Mazzaroth library** — real SQLite FTS5 persistence, decay, consolidation tests
+   (`tests/mazzaroth_test.rs`) are the best tests in the repo *as a library*.
+5. **Mobile PWA shell** — every JS endpoint/ID exists, correct content-types, `innerText` (no XSS
+   in the PWA itself), real joystick→REST plumbing.
+6. Repo hygiene: no binaries/DBs/models committed; tests all green; builds locally.
+
+### CRITICAL — the robot cannot work until these are fixed
+
+| # | Finding | Evidence |
+|---|---|---|
+| C1 | **Silent robot.** TTS audio is never generated in the turn path and never transmitted: `process_text_turn` returns only JSON; `synthesize()` has zero production callers; `server.rs` contains no `Message::Binary` send. Device receives `tts` start/stop with **no audio frames between them** | `pipeline.rs:165-168`, `audio.rs:92` (dead in prod), `server.rs:166/182/209` (all Text) |
+| C2 | **STT is fake even with whisper installed.** Opus frames are byte-concatenated and piped to the whisper CLI stdin (`audio.rs:46-74`) — no Opus decode, no WAV header → empty stdout → **fabricated transcript** `"Audio input (N frames)"` (`audio.rs:78-79`) or `"Audio speech input"` (`:86`). Those fakes become the user's "utterance" fed to the LLM | `audio.rs:61-88` |
+| C3 | **Commands the firmware ignores.** `ServerMessage::Action` and `Config` are not xiaozhi message types — StackChan's client drops unknown types. The real control channel is `mcp` (→ `hal_mcp.cpp` tools), which the server cannot even emit (no `Mcp` variant in `ServerMessage`). Tier‑1 "stop/wave" and Tier‑2 MCP are dead-on-arrival | `protocol.rs:75-84`, `server.rs:228-230` |
+| C4 | **Fresh clone does not compile.** `path = "../cynapse-mini/..."` deps not vendored; `Cargo.lock` pins them with no `source`; sibling repo is pushed as `Alartist40/cynapse`, not `cynapse-mini`. README's first command (`cargo build --release`) fails for everyone but this machine | `Cargo.toml:22-24` |
+| C5 | **Auth theater.** Anyone on the LAN reads the token via unauthenticated `GET /xiaozhi/ota/` under `CorsLayer::permissive()`; default token `cynpase-secret-token` is committed; deploy passes no `--auth-token`; rejected tokens are logged verbatim | `ota.rs:18-27`, `server.rs:62,95`, `config.rs:14`, `deploy/cynpase-bot.service:10` |
+| C6 | **Desktop GUI is 100% theater.** Zero network I/O anywhere in `src/gui/`. `connected` is never set true (badge stuck DISCONNECTED), sliders/buttons do nothing, **EMERGENCY STOP writes a log line**, camera = painted rectangle, galaxy = 4 hardcoded stars | `gui/state.rs:29`, `gui/app.rs:37-83,94-102,137-151` |
+| C7 | **Mobile control reaches no hardware.** `/api/robot/control` → broadcast channel whose only subscriber is the dashboard; the device socket never subscribes. **Push-to-talk records no audio** — it sends a canned string `'What can you see and do?'` and displays `'[Voice Input Captured]'` | `mobile.rs:117-126,982-999`, `dashboard.rs:111` |
+| C8 | **Deploy crash-loops.** Service runs `target/release/cynpase-bot` (does not exist → `203/EXEC` + `Restart=always`); installer never builds; `--public-ws-url ws://0.0.0.0:8000` hands the robot an unroutable address; `User=xander` hardcoded | `deploy/cynpase-bot.service:8-15`, `deploy/install-opi.sh` |
+| C9 | **XSS → token theft.** Dashboard `innerHTML` interpolates attacker-controlled `expression`/chat text; payload fetches `/xiaozhi/ota/` and exfiltrates the token. All of it unauthenticated on `0.0.0.0` | `dashboard.rs:90`, `mobile.rs:119-122`, `server.rs:62` |
+
+### HIGH
+
+- **H1 Memory never runs:** `MazzarothEngine::open` has no `src/` caller; `with_memory` never called
+  → `record_interaction` no-ops and `build_system_prompt` injects no memory; celestial endpoint
+  returns a hardcoded 5-node literal (`mobile.rs:174-187`).
+- **H2 No conversation history:** LLM payload is one system + one user message (`pipeline.rs:104-118`).
+  Every turn is amnesia; LLM errors are *spoken aloud* as replies (`:135-138`).
+- **H3 No timeouts:** `reqwest::Client::new()` (default: no timeout) — a hung LLM blocks the whole
+  device receive loop (`server.rs:200` awaits inline, not spawned).
+- **H4 Single session slot** overwritten by a 2nd device and cleared on *any* disconnect
+  (`server.rs:127,266`); unbounded audio buffer (`session.rs:41-46`); HTTP 204 with body (`:75`).
+- **H5 Tests that prove nothing:** `audio_test` asserts the mock bytes (`audio.rs:185-188`);
+  `pipeline_test` Tier‑3 passes when the LLM is completely broken; `gui_test` tests functions the
+  GUI never calls; `ota_test` enshrines the token leak; **zero negative auth tests** (delete the
+  token check → all 18 gates still green).
+- **H6 Doc overclaims:** README "12 suites" (11), "Android packaging" (`mobile/src/` is an empty
+  dir, build script is an `echo`), LICENSE = Apache-2.0 file vs `license = "MIT"` in Cargo.toml.
+
+### MEDIUM (top 5 of ~12)
+
+1. `eframe` not feature-gated → every headless hub build links the GUI stack (`Cargo.toml:26`).
+2. `.gitignore` lacks `models/`, `*.onnx`, `*.gguf`, `node_modules/` — one `git add .` from
+   committing 100 MB of weights (`audio.rs:23,25` points at repo-root `models/`).
+3. PWA manifest icon **is** `manifest.json` (`mobile.rs:198-205`); service-worker cache name never
+   version-bumps → stale offline forever.
+4. `start.sh` runs a stale binary if one exists; scripts mode 644; `Environment=PORT` read by nothing.
+5. GUI neon color picker mutates a temporary — label freezes forever (`gui/app.rs:75`).
+
+### Verdicts
+
+| Component | Verdict |
+|---|---|
+| xiaozhi WS + OTA | **WORKING (skeleton)** — real handshake/session, weak auth |
+| Voice loop (STT→LLM→TTS→device) | **BROKEN** — fake STT, no audio out, wrong action type |
+| Mazzaroth memory | **WORKING as library, THEATER in product** (never instantiated) |
+| Persona | **PARTIAL** — prompt builds, no memory, no history |
+| Desktop GUI | **THEATER** (zero I/O) |
+| Mobile PWA | **PARTIAL** — honest viewer shell, fake controller + fake PTT |
+| Tests | **18/18 green, ~6 prove nothing** — no coverage was ever measured |
+| Fresh-clone build | **FAILS** (path deps) |
+| Deploy | **BROKEN** (crash loop, unroutable WS URL) |
+
+---
+
+## 9. Next step (priority order — P0 first, robot cannot work without them)
+
+1. **Audio out (C1):** add an `opus` encoder; in the turn path call `synthesize()`, encode PCM →
+   24 kHz Opus, send as `Message::Binary` frames between `tts start/stop`. *Gate: a test that fails
+   if zero binary frames are sent during a turn.*
+2. **Audio in (C2):** Opus-decode the buffered frames → PCM 16 kHz → proper WAV to whisper; delete
+   the fabricated-transcript fallbacks (or gate them behind `--dev-mock`); gate fails if transcript
+   contains `"Audio input"`/`"packets"`.
+3. **Control channel (C3):** drop `Action`/`Config`; emit xiaozhi `mcp` messages that invoke
+   `hal_mcp` tools (stop, servo, face) — Tier‑1 must reach the robot in <100 ms.
+4. **Build truth (C4):** vendor or git-pin the `cynapse-*` crates so a fresh clone compiles;
+   fix LICENSE mismatch.
+5. **Auth (C5/C9):** random per-install token, auth or remove token from OTA, no permissive CORS,
+   fix dashboard `innerHTML`, add a negative auth gate (wrong token → 401 must fail the suite).
+
+Then P1: honest GUI/mobile (wire to hub or cut — YAGNI per §4), deploy fix (build before start,
+routable WS URL), memory wiring + chat history + LLM timeout, rewrite gates G4–G6.
+
+**One action right now:** reply `P0-1` and I will write the GATES entries for the audio-out fix
+(fail-if-silent) before touching any code.

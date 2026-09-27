@@ -1,9 +1,8 @@
-use cynapse_memory::store::DendriteStore;
-use cynapse_memory::graph::{Node, NodeType};
+use crate::mazzaroth::node::{MemoryNode, MemoryTier, NodeTaxonomy};
+use crate::mazzaroth::MazzarothEngine;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
@@ -23,7 +22,7 @@ impl Default for PersonaConfig {
             name: "CynapseBot".to_string(),
             identity: "You are CynapseBot, an embodied desktop companion robot running locally.".to_string(),
             soul: "Friendly, helpful, witty, and concise. You love moving your servos and reacting to the user.".to_string(),
-            tools: "Available tools: servo_control, face_display, play_animation, emergency_stop.".to_string(),
+            tools: "Available tools: self.robot.set_head_angles, self.robot.set_led_color, play_animation, self.robot.create_reminder, emergency_stop.".to_string(),
             voice: "alba".to_string(),
             persona_dir: Some(PathBuf::from("data/persona")),
         }
@@ -32,14 +31,14 @@ impl Default for PersonaConfig {
 
 pub struct PersonaManager {
     pub config: PersonaConfig,
-    pub memory_store: Option<Arc<DendriteStore>>,
+    pub memory_engine: Option<MazzarothEngine>,
 }
 
 impl PersonaManager {
     pub fn new(config: PersonaConfig) -> Self {
         let mut mgr = Self {
             config,
-            memory_store: None,
+            memory_engine: None,
         };
         mgr.load_persona_files();
         mgr
@@ -63,8 +62,8 @@ impl PersonaManager {
     }
 
     pub fn with_memory(mut self, db_path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let store = DendriteStore::open(db_path)?;
-        self.memory_store = Some(Arc::new(store));
+        let engine = MazzarothEngine::open(db_path)?;
+        self.memory_engine = Some(engine);
         Ok(self)
     }
 
@@ -74,10 +73,8 @@ impl PersonaManager {
             self.config.name, self.config.identity, self.config.soul, self.config.tools
         );
 
-        if let Some(ref store) = self.memory_store {
-            let graph = cynapse_memory::graph::Dendrite::default();
-            if store.load_all(&graph).is_ok() {
-                let nodes = graph.all();
+        if let Some(ref engine) = self.memory_engine {
+            if let Ok(nodes) = engine.get_all_nodes_sync() {
                 if !nodes.is_empty() {
                     prompt.push_str("\nRecent Memory Facts:\n");
                     for node in nodes.iter().take(5) {
@@ -91,19 +88,22 @@ impl PersonaManager {
     }
 
     pub fn record_interaction(&self, title: &str, content: &str) -> anyhow::Result<()> {
-        if let Some(ref store) = self.memory_store {
+        if let Some(ref engine) = self.memory_engine {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64;
 
-            let mut node = Node::placeholder(format!("turn_{}", now), now);
-            node.title = title.to_string();
-            node.content = content.to_string();
-            node.node_type = NodeType::TurnLog;
-            node.tags = vec!["robot_turn".to_string()];
-            store.save(&node)?;
-            info!(title = %title, "Recorded turn in Dendrite memory graph");
+            let node = MemoryNode::new(
+                format!("turn_{}", now),
+                title.to_string(),
+                content.to_string(),
+                MemoryTier::L2Episodic,
+                NodeTaxonomy::Event,
+                now,
+            );
+            engine.store().save_node(&node)?;
+            info!(title = %title, "Recorded turn in Mazzaroth memory engine");
         }
         Ok(())
     }
