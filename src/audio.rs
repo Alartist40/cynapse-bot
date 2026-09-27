@@ -199,31 +199,42 @@ impl AudioEngine {
         }
 
         let wav_data = Self::pcm_to_wav_bytes(&pcm_16k, 16000);
-        info!(bytes = wav_data.len(), samples = pcm_16k.len(), "Running STT on decoded 16kHz WAV");
+        let temp_wav_path = std::env::temp_dir().join(format!("cynpase_stt_{}.wav", uuid::Uuid::new_v4()));
+        if let Err(e) = tokio::fs::write(&temp_wav_path, &wav_data).await {
+            warn!("Failed to write temp WAV file for STT: {}", e);
+            return Ok(String::new());
+        }
 
-        match Command::new(&self.config.whisper_bin)
+        let result = match Command::new(&self.config.whisper_bin)
             .arg("--model")
             .arg(&self.config.whisper_model_path)
-            .stdin(Stdio::piped())
+            .arg("-f")
+            .arg(&temp_wav_path)
+            .arg("--no-timestamps")
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
         {
-            Ok(mut child) => {
-                if let Some(mut stdin) = child.stdin.take() {
-                    let _ = stdin.write_all(&wav_data).await;
+            Ok(child) => match child.wait_with_output().await {
+                Ok(output) => {
+                    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    Ok(text)
                 }
-                let output = child.wait_with_output().await?;
-                let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                Ok(text)
-            }
+                Err(e) => {
+                    warn!("Whisper process wait error: {}", e);
+                    Ok(String::new())
+                }
+            },
             Err(_) => {
                 // If external whisper binary is not in PATH during local test/dev,
                 // return empty string so pipeline knows no transcription occurred rather than hallucinating
                 warn!("Whisper binary not found in PATH");
                 Ok(String::new())
             }
-        }
+        };
+
+        let _ = tokio::fs::remove_file(&temp_wav_path).await;
+        result
     }
 
     /// Synthesize speech text into 24 kHz Opus audio frames using Pocket-TTS or Piper

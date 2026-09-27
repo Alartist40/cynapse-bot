@@ -8,7 +8,7 @@ pub struct HubConfig {
     #[arg(long, default_value = "0.0.0.0:8000")]
     pub bind_addr: SocketAddr,
 
-    #[arg(long, default_value = "ws://127.0.0.1:8000/xiaozhi/ws")]
+    #[arg(long, env = "CYNPASE_PUBLIC_WS_URL", default_value = "ws://127.0.0.1:8000/xiaozhi/ws")]
     pub public_ws_url: String,
 
     #[arg(long, env = "CYNPASE_AUTH_TOKEN", default_value = "cynpase-secret-token")]

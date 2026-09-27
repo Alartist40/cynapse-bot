@@ -17,11 +17,13 @@ async fn test_ota_endpoint() {
 
     let pipeline = PipelineEngine::new(config.clone());
     let (telemetry_tx, _) = tokio::sync::broadcast::channel(10);
+    let (device_cmd_tx, _) = tokio::sync::broadcast::channel(10);
     let state = AppState {
         config: config.clone(),
         pipeline,
         session: Arc::new(Mutex::new(None)),
         telemetry_tx,
+        device_cmd_tx,
         vision: cynpase_bot::VisionManager::new(),
     };
 

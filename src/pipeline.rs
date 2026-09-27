@@ -6,7 +6,7 @@ use crate::protocol::ServerMessage;
 use serde_json::json;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 
 pub enum PipelineTurnResult {
     FastAction {
@@ -39,10 +39,21 @@ pub struct PipelineEngine {
 impl PipelineEngine {
     pub fn new(config: Arc<HubConfig>) -> Self {
         let audio_engine = Arc::new(AudioEngine::new(AudioConfig::default()));
-        let persona_manager = Arc::new(Mutex::new(PersonaManager::new(PersonaConfig::default())));
+        let persona = match PersonaManager::new(PersonaConfig::default()).with_memory("data/mazzaroth.db") {
+            Ok(p) => p,
+            Err(_) => PersonaManager::new(PersonaConfig::default())
+                .with_memory(":memory:")
+                .unwrap_or_else(|_| PersonaManager::new(PersonaConfig::default())),
+        };
+        let persona_manager = Arc::new(Mutex::new(persona));
+        let http_client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .unwrap_or_default();
+
         Self {
             config,
-            http_client: reqwest::Client::new(),
+            http_client,
             audio_engine,
             persona_manager,
             history: Arc::new(Mutex::new(Vec::new())),
@@ -178,10 +189,12 @@ impl PipelineEngine {
                     .to_string()
             }
             Ok(resp) => {
-                format!("Leafcutter LLM returned status: {}", resp.status())
+                warn!("Leafcutter LLM returned status: {}", resp.status());
+                "I am here, but having trouble reaching my neural engine right now.".to_string()
             }
             Err(e) => {
-                format!("Leafcutter LLM offline fallback ({}).", e)
+                warn!("Leafcutter LLM offline or unreachable: {}", e);
+                "I am listening, but my local language model is currently offline.".to_string()
             }
         };
 

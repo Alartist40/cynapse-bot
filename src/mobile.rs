@@ -78,13 +78,20 @@ pub async fn handle_api_robot_control(
     Json(payload): Json<RobotControlRequest>,
 ) -> Response {
     let mut actions = Vec::new();
+    let mut mcp_messages = Vec::new();
 
     if let (Some(pan), Some(tilt)) = (payload.pan, payload.tilt) {
+        let p = pan.clamp(-90, 90);
+        let t = tilt.clamp(-30, 30);
         actions.push(json!({
             "type": "servo_angles",
-            "pan": pan.clamp(-90, 90),
-            "tilt": tilt.clamp(-30, 30)
+            "pan": p,
+            "tilt": t
         }));
+        mcp_messages.push(crate::protocol::ServerMessage::Mcp {
+            tool: "self.robot.set_head_angles".to_string(),
+            arguments: json!({ "yaw": p, "pitch": t, "speed": 150 }),
+        });
     }
 
     if let (Some(r), Some(g), Some(b)) = (payload.r, payload.g, payload.b) {
@@ -94,6 +101,10 @@ pub async fn handle_api_robot_control(
             "g": g,
             "b": b
         }));
+        mcp_messages.push(crate::protocol::ServerMessage::Mcp {
+            tool: "self.robot.set_led_color".to_string(),
+            arguments: json!({ "red": r, "green": g, "blue": b }),
+        });
     }
 
     if let Some(ref anim_name) = payload.animation {
@@ -103,6 +114,10 @@ pub async fn handle_api_robot_control(
                 "name": animation.name,
                 "keyframes_count": animation.keyframes.len()
             }));
+            mcp_messages.push(crate::protocol::ServerMessage::Mcp {
+                tool: "play_animation".to_string(),
+                arguments: json!({ "name": anim_name }),
+            });
         }
     }
 
@@ -113,17 +128,33 @@ pub async fn handle_api_robot_control(
         }));
     }
 
+    // Forward to connected robot WebSocket via device_cmd_tx
+    let is_connected = state.session.lock().await.is_some();
+    let mut dispatched_count = 0;
+    for mcp in mcp_messages {
+        let send_res = state.device_cmd_tx.send(mcp);
+        if send_res.is_ok() && is_connected {
+            dispatched_count += 1;
+        }
+    }
+
     // Broadcast control telemetry
     let _ = state.telemetry_tx.send(TelemetryEvent {
         event_type: "mobile_robot_control".to_string(),
         payload: json!({
             "actions": actions,
-            "raw": payload
+            "raw": payload,
+            "device_connected": is_connected,
+            "dispatched_count": dispatched_count
         }),
         timestamp_ms: 0,
     });
 
-    (StatusCode::OK, Json(json!({ "status": "ok", "actions_dispatched": actions.len() }))).into_response()
+    (StatusCode::OK, Json(json!({
+        "status": "ok",
+        "actions_dispatched": dispatched_count,
+        "device_connected": is_connected
+    }))).into_response()
 }
 
 pub async fn handle_api_chat_send(

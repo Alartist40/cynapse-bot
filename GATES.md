@@ -100,3 +100,9 @@
   EXPECT: test_ota_endpoint ... ok
   EVIDENCE: test test_ota_endpoint ... ok (0.02s)
 
+- [x] G21: REST/GUI/Mobile command dispatch reaches connected robot WebSocket as ServerMessage::Mcp (fail-if-dead-end)
+  CHECK: cargo test --test mobile_test test_mobile_control_reaches_connected_robot_socket -- --nocapture
+  EXPECT: test_mobile_control_reaches_connected_robot_socket ... ok
+  EVIDENCE: test test_mobile_control_reaches_connected_robot_socket ... ok (0.05s)
+
+

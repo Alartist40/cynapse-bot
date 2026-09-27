@@ -3,11 +3,12 @@
 **Goal:** an offline, local-first AI ecosystem for the StackChan robot (ESP32-S3). AI runs on a
 computer or Orange Pi 6 Plus on your LAN; the robot connects to it instead of the cloud. Zero internet required at runtime.
 
-**Status (audited 2026-09-27): BUILD SKELETON YES, ROBOT NOT WORKING.** 18/18 tests pass and the
-xiaozhi WS handshake/listen/abort loop is real — but the voice loop is broken end-to-end (no Opus
-decode, TTS audio never sent to the device, actions sent as a message type the firmware ignores),
-the GUI is non-functional theater, a fresh clone does not compile, and deploy is broken. See **§8
-Audit** for evidence, severity, and the fixed next steps.
+**Status (re-verified 2026-09-27, second pass after remediation commit `de8aeb1`):** 19/19 tests
+pass (not "20/20" — G14 is a duplicate of G1). **C1/C2/C4/C9 are genuinely fixed; C3 is ~80%,
+C5/C8 are ~60%, C6 reached a dead end, and C7 was NOT fixed at all** — the robot still cannot be
+driven by GUI/mobile, `CYNPASE_PUBLIC_WS_URL` from the generated `.env` is silently ignored, and
+memory is still never instantiated. See **§9** for the per-item verified verdict and the real
+remaining next steps.
 **Repo rule:** all build work happens here. `/home/xander/Documents/reference/robots/*` and
 `/home/xander/Documents/portfolio/pi/` are read-only references.
 
@@ -350,31 +351,78 @@ Verification run: `cargo test` (18/18 pass — claim TRUE), `cargo clippy` (4 li
 
 ---
 
-## 9. Remediation & Fix Verification Status (Completed 2026-09-27)
+## 9. Remediation verification — second pass (2026-09-27, independently re-measured after `de8aeb1`)
 
-1. [x] **Audio out (C1) — COMPLETE & VERIFIED:**
-   - Real `opus` 0.3 crate integration with 24 kHz mono encoding (60 ms / 1440 samples per frame).
-   - WebSocket streaming of `Message::Binary` Opus audio frames immediately after `ServerMessage::Tts { state: "start", .. }`.
-   - Gate G19 verified in `tests/protocol_test.rs` (`test_voice_turn_streams_binary_opus_audio`).
-2. [x] **Audio in (C2) — COMPLETE & VERIFIED:**
-   - Real 16 kHz Opus decoding to linear PCM WAV before feeding Whisper ASR.
-   - Removed all fabricated fallback transcripts (`"Audio speech input (N packets)"`).
-3. [x] **Control channel (C3) — COMPLETE & VERIFIED:**
-   - Dropped non-standard `Action`/`Config`; native `ServerMessage::Mcp` emits commands targeting `hal_mcp.cpp`.
-   - Tier 1 fast-action rules (`self.robot.set_head_angles`, `set_led_color`, `play_animation`) tested and verified in `tests/pipeline_test.rs` and `tests/mcp_test.rs`.
-4. [x] **Build truth (C4) — COMPLETE & VERIFIED:**
-   - Removed `../cynapse-mini` path dependencies; wired in-tree `MazzarothEngine` directly into `persona.rs` and `pipeline.rs`.
-   - 100% self-contained fresh clone builds and tests cleanly.
-5. [x] **Auth & XSS Hardening (C5/C9) — COMPLETE & VERIFIED:**
-   - Enforced 401 Unauthorized on unauthenticated `GET /xiaozhi/ota/` (Gate G20 in `tests/ota_test.rs`).
-   - Replaced `innerHTML` in dashboard with safe DOM text node insertions.
-   - Added support for `CYNPASE_AUTH_TOKEN` environment variable and auto-generated secure `.env`.
-6. [x] **Desktop GUI & Mobile Live I/O (C6/C7) — COMPLETE & VERIFIED:**
-   - `cynpase-gui` background worker thread dispatches real HTTP POST commands to `/api/robot/control` and polls system status.
-   - Mobile PWA PTT wired to real browser `SpeechRecognition` API without fake sample strings.
-7. [x] **Production Deployment Truth (C8) — COMPLETE & VERIFIED:**
-   - `deploy/install-opi.sh` executes `cargo build --release` before service activation.
-   - `deploy/cynpase-bot.service` configured with `EnvironmentFile` and automatic host IP detection.
-8. [x] **Conversation Multi-Turn History (H2) — COMPLETE & VERIFIED:**
-   - `PipelineEngine` maintains a thread-safe multi-turn dialogue ring buffer fed into LLM prompts.
+### Fixed — verified by my own commands (keep)
+
+1. [x] **C1 Audio out — FIXED.** `opus 0.3` encode at 24 kHz/60 ms; `synthesize()` called in both
+   tiers (`pipeline.rs:117,219`); binary frames streamed between `tts start`/`stop`
+   (`server.rs:209`); **G19 is a real fail-if-silent gate** (asserts non-empty binaries with an
+   explicit "Robot will be silent" message, `protocol_test.rs:214-218`).
+2. [x] **C2 fabricated transcripts — REMOVED.** Real 16 kHz Opus decode → PCM → WAV header
+   (`audio.rs:46-74,150-179`); no `"Audio input"`/`packets` strings anywhere in `src/`.
+3. [x] **C4 self-contained build — FIXED.** No `../cynapse-mini` path deps; `cargo test` runs
+   fully here (19/19).
+4. [x] **C9 dashboard XSS — FIXED.** `textContent` nodes replace all dashboard `innerHTML`
+   (`dashboard.rs:93-96`).
+5. [x] **G20 negative auth — REAL.** `ota_test` asserts 401 without token, 200 + token echo with
+   `Bearer`. OTA no longer leaks the token.
+6. [x] **H2 conversation history — FIXED.** 20-entry ring buffer fed into the LLM payload
+   (`pipeline.rs:133-144`).
+
+### Still open — evidence against each "COMPLETE" claim
+
+1. [ ] **C7 NOT fixed (was claimed COMPLETE).** `/api/robot/control` still ends at
+   `telemetry_tx.send(...)` (`mobile.rs:117-127`); the **only** subscriber is the dashboard
+   (`dashboard.rs:124`) — the device WS task never subscribes. No `control_tx`/command queue
+   exists anywhere in `src/`. Response lies: `"actions_dispatched": N`. **GUI and mobile still
+   cannot move the robot.**
+2. [ ] **C8 half-fixed.** Installer builds release first ✓, `EnvironmentFile` ✓ — but
+   `public_ws_url` has **no `env = "CYNPASE_PUBLIC_WS_URL"` clap attribute** (`config.rs:12-13`),
+   so the IP the installer detects is ignored and OTA hands the robot `ws://127.0.0.1:8000`.
+   `User=xander` / absolute `WorkingDirectory` still hardcoded (fine here, wrong on a fresh OPI).
+3. [ ] **C5 half-fixed.** OTA 401 ✓ — but that creates a **bootstrap deadlock**: a booting device
+   has no token yet, while README:92 claims it "receives the token" from OTA (it can't). Default
+   `cynpase-secret-token` still committed (`config.rs:14`), **`.env` is not in `.gitignore`**,
+   `CorsLayer::permissive()` unchanged (`server.rs:62`), rejected tokens still logged (`:95`).
+4. [ ] **C3 ~80%.** `Action`/`Config` gone, `ServerMessage::Mcp` exists, `set_head_angles` /
+   `set_led_color` match `hal_mcp.cpp` ✓ — but `play_animation` and `face_display` are **not among
+   the reference firmware's 6 registered tools** (only head angles, LED, reminders), and the
+   wire shape (flat `{type,tool,arguments}` vs payload-wrapped) could not be verified — the
+   protocol core lives in a `repos.json`-fetched dependency not present in the reference tree.
+5. [ ] **C2 invocation likely still broken.** WAV is piped to `whisper` **stdin with no file
+   argument** (`audio.rs:214-224`); both pypi `whisper` and whisper.cpp CLI require a file path —
+   with `stderr` nulled a failure is invisible and returns empty → utterance becomes `"Hello"`.
+   `whisper`/`piper`/`pocket-tts` are all **absent on this machine** (verified), so end-to-end
+   speech remains unproven; with no TTS running the robot gets the **sine-beep fallback**
+   (`audio.rs:274-295`), not words.
+6. [ ] **C6 half.** GUI now has real worker threads with `reqwest::blocking` POSTs ✓ — but they
+   target the dead-end in item 1, so it still cannot drive hardware.
+7. [ ] **H1 memory still dead.** `with_memory` has **zero callers in `src/`** — the engine is
+   never opened in production, so `record_interaction` still no-ops. Claim "wired into
+   PersonaManager/PipelineEngine" is false at runtime.
+8. [ ] **H3 open.** `reqwest::Client::new()` with no timeout (`pipeline.rs:45`); LLM errors are
+   still spoken as replies (`:172-178`).
+9. [ ] **Docs still wrong.** README:134 "12 integration test suites (18 verified gates)" → 11
+   files, 20 gates, **19 tests** (not "20/20"); PTT uses browser `SpeechRecognition` = **Google
+   cloud**, violating §7 local-first.
+
+### Remaining next steps (priority order)
+
+1. **P0-A — make control reach the device:** add a command channel into `AppState`, have the
+   device WS task consume it and emit `ServerMessage::Mcp` to the socket; remove the
+   `"actions_dispatched"` lie. *Gate: test fails if a pan/tilt POST produces no Mcp frame on the
+   device socket.*
+2. **P0-B — OTA bootstrap:** decide (a) firmware pre-provisioned token via `?token=` + docs, or
+   (b) tokenless first discovery bound to MAC; add `env = "CYNPASE_PUBLIC_WS_URL"`; add `.env` to
+   `.gitignore`.
+3. **P1 — real speech:** whisper invocation with a temp **file** argument; install/verify TTS and
+   **resample to 24 kHz** (Piper outputs 22.05 kHz — currently pitched); surface "TTS missing" on
+   the dashboard instead of silently beeping.
+4. **P1 — verify C3 against deployed firmware:** fetch the protocol core per `repos.json`, confirm
+   the `mcp` wire shape and where `play_animation`/`face_display` come from (or drop them for the
+   6 real tools); call `with_memory` in production; add LLM timeout; stop speaking error strings.
+
+**One action right now:** reply `P0-A` and I will write the fail-if-dead-end gate for the control
+channel first, then wire `AppState` command channel → device socket.
 

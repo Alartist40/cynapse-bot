@@ -19,6 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Arc::new(HubConfig::parse());
     let pipeline = PipelineEngine::new(config.clone());
     let (telemetry_tx, _) = broadcast::channel(100);
+    let (device_cmd_tx, _) = broadcast::channel(100);
     let vision = VisionManager::new();
 
     let state = AppState {
@@ -26,6 +27,7 @@ async fn main() -> anyhow::Result<()> {
         pipeline,
         session: Arc::new(Mutex::new(None)),
         telemetry_tx,
+        device_cmd_tx,
         vision,
     };
 

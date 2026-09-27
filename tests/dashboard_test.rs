@@ -14,12 +14,14 @@ async fn test_web_dashboard_and_monitor() {
     let config = Arc::new(HubConfig::default());
     let pipeline = PipelineEngine::new(config.clone());
     let (telemetry_tx, _) = broadcast::channel(50);
+    let (device_cmd_tx, _) = broadcast::channel(50);
 
     let state = AppState {
         config: config.clone(),
         pipeline,
         session: Arc::new(Mutex::new(None)),
         telemetry_tx: telemetry_tx.clone(),
+        device_cmd_tx,
         vision: cynpase_bot::VisionManager::new(),
     };
 

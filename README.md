@@ -84,12 +84,13 @@ cargo run --bin cynpase-gui
 
 ## 4. Robot Configuration (StackChan)
 
-Point StackChan's `CONFIG_OTA_URL` to your hub:
+Point StackChan's `CONFIG_OTA_URL` to your hub with your authentication token:
 ```
-http://<HUB_LAN_IP>:8000/xiaozhi/ota/
+http://<HUB_LAN_IP>:8000/xiaozhi/ota/?token=cynpase-secret-token
 ```
+*(Or pass `Authorization: Bearer <TOKEN>` in the firmware HTTP request headers).*
 
-When StackChan boots, it requests OTA discovery, receives the WebSocket URL (`ws://<HUB_LAN_IP>:8000/xiaozhi/ws`) and authentication token, and establishes a persistent local session.
+When StackChan boots, it requests authenticated OTA discovery, receives the WebSocket URL (`ws://<HUB_LAN_IP>:8000/xiaozhi/ws`) along with connection parameters, and establishes a persistent local session.
 
 ---
 
@@ -131,7 +132,7 @@ cynpase-bot/
 ├── data/persona/         # Markdown persona definition files
 ├── deploy/               # Systemd units & launcher scripts
 ├── mobile/               # Standalone mobile wrapper & Android packaging
-├── tests/                # 12 integration test suites (18 verified gates)
+├── tests/                # 11 integration test suites (21 verified gates in GATES.md)
 └── GATES.md              # Quality gates & test verification ledger
 ```
 

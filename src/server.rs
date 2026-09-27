@@ -22,7 +22,7 @@ use axum::{
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
@@ -33,6 +33,7 @@ pub struct AppState {
     pub pipeline: PipelineEngine,
     pub session: Arc<Mutex<Option<Session>>>,
     pub telemetry_tx: TelemetrySender,
+    pub device_cmd_tx: broadcast::Sender<ServerMessage>,
     pub vision: VisionManager,
 }
 
@@ -92,7 +93,7 @@ async fn ws_handler(
     // Validate token
     if let Some(tok) = token {
         if tok != state.config.auth_token {
-            warn!("Rejected unauthorized WS connection attempt with token: {}", tok);
+            warn!("Rejected unauthorized WS connection attempt with invalid token");
             return (StatusCode::UNAUTHORIZED, "Invalid auth token").into_response();
         }
     } else {
@@ -122,6 +123,7 @@ async fn handle_socket(
     client_id: String,
 ) {
     let (mut sender, mut receiver) = socket.split();
+    let mut cmd_rx = state.device_cmd_tx.subscribe();
     let session = Session::new(device_id.clone(), client_id.clone());
     let session_id = session.id.clone();
     *state.session.lock().await = Some(session);
@@ -138,14 +140,38 @@ async fn handle_socket(
 
     info!(session_id = %session_id, device_id = %device_id, "Device connected via Xiaozhi WS");
 
-    while let Some(msg) = receiver.next().await {
-        let msg = match msg {
-            Ok(m) => m,
-            Err(e) => {
-                warn!("WS receive error: {}", e);
-                break;
+    loop {
+        tokio::select! {
+            cmd = cmd_rx.recv() => {
+                match cmd {
+                    Ok(server_msg) => {
+                        if let Ok(json_text) = serde_json::to_string(&server_msg) {
+                            info!(tool = ?server_msg, "Forwarding external command to connected robot WebSocket");
+                            if let Err(e) = sender.send(Message::Text(json_text.into())).await {
+                                error!("Failed to send command to robot socket: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!("Command receiver lagged by {} messages", skipped);
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    }
+                }
             }
-        };
+            msg = receiver.next() => {
+                let msg = match msg {
+                    Some(Ok(m)) => m,
+                    Some(Err(e)) => {
+                        warn!("WS receive error: {}", e);
+                        break;
+                    }
+                    None => {
+                        break;
+                    }
+                };
 
         match msg {
             Message::Text(text) => {
@@ -263,6 +289,8 @@ async fn handle_socket(
                 break;
             }
             _ => {}
+        }
+            }
         }
     }
 
