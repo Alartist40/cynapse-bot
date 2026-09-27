@@ -79,3 +79,13 @@
   CHECK: cargo test --test gui_test test_constellation_viewport_projection -- --nocapture
   EXPECT: test_constellation_viewport_projection ... ok
   EVIDENCE: test test_constellation_viewport_projection ... ok (0.00s)
+
+- [x] G17: Mobile PWA endpoint serves responsive app bundle, manifest, and service worker
+  CHECK: cargo test --test mobile_test test_mobile_pwa_endpoints -- --nocapture
+  EXPECT: test_mobile_pwa_endpoints ... ok
+  EVIDENCE: test test_mobile_pwa_endpoints ... ok (0.01s)
+
+- [x] G18: Mobile robot control API dispatches pan/tilt, choreographies, and broadcasts telemetry
+  CHECK: cargo test --test mobile_test test_mobile_robot_control_and_telemetry -- --nocapture
+  EXPECT: test_mobile_robot_control_and_telemetry ... ok
+  EVIDENCE: test test_mobile_robot_control_and_telemetry ... ok (0.00s)

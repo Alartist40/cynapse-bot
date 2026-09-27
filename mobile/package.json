@@ -1,0 +1,12 @@
+{
+  "name": "cynpase-bot-mobile",
+  "version": "0.1.0",
+  "description": "CynapseBot Mobile Companion App for StackChan",
+  "main": "index.js",
+  "scripts": {
+    "build": "echo 'PWA is served directly by cynpase-bot hub daemon at /mobile'"
+  },
+  "keywords": ["stackchan", "cynapse", "robotics", "pwa", "mobile"],
+  "author": "",
+  "license": "Apache-2.0"
+}

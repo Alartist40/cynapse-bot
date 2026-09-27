@@ -1,5 +1,9 @@
 use crate::config::HubConfig;
 use crate::dashboard::{handle_dashboard_html, handle_monitor_ws, TelemetryEvent, TelemetrySender};
+use crate::mobile::{
+    handle_api_celestial_memory, handle_api_chat_send, handle_api_robot_control, handle_api_status,
+    handle_manifest_json, handle_mobile_app_html, handle_service_worker_js,
+};
 use crate::ota::handle_ota_discovery;
 use crate::pipeline::PipelineEngine;
 use crate::protocol::{AudioParams, ClientMessage, ServerMessage};
@@ -12,7 +16,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Extension, Router,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -41,11 +45,19 @@ pub fn create_router(state: AppState) -> Router {
     Router::new()
         .route("/", get(handle_dashboard_html))
         .route("/dashboard", get(handle_dashboard_html))
+        .route("/mobile", get(handle_mobile_app_html))
+        .route("/app", get(handle_mobile_app_html))
+        .route("/manifest.json", get(handle_manifest_json))
+        .route("/service-worker.js", get(handle_service_worker_js))
         .route("/camera/latest.jpg", get(handle_latest_camera_image))
         .route("/ws/monitor", get(handle_monitor_ws))
         .route("/xiaozhi/ota/", get(handle_ota_discovery))
         .route("/xiaozhi/ota", get(handle_ota_discovery))
         .route("/xiaozhi/ws", get(ws_handler))
+        .route("/api/status", get(handle_api_status))
+        .route("/api/robot/control", post(handle_api_robot_control))
+        .route("/api/chat/send", post(handle_api_chat_send))
+        .route("/api/memory/celestial", get(handle_api_celestial_memory))
         .route("/health", get(|| async { "OK" }))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

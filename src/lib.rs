@@ -5,6 +5,7 @@ pub mod dashboard;
 pub mod gui;
 pub mod mazzaroth;
 pub mod mcp;
+pub mod mobile;
 pub mod ota;
 pub mod persona;
 pub mod pipeline;
