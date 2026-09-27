@@ -132,18 +132,11 @@ pub struct McpDispatcher;
 
 impl McpDispatcher {
     pub fn format_mcp_call(action: HardwareAction) -> Value {
-        match action {
-            HardwareAction::MoveServo { pan, tilt } => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.set_head_angles",
-                    "arguments": {
-                        "yaw": pan,
-                        "pitch": tilt,
-                        "speed": 150
-                    }
-                })
-            }
+        let (name, args) = match action {
+            HardwareAction::MoveServo { pan, tilt } => (
+                "self.robot.set_head_angles".to_string(),
+                json!({ "yaw": pan, "pitch": tilt, "speed": 150 }),
+            ),
             HardwareAction::SetFace { expression } => {
                 let (r, g, b) = match expression.to_lowercase().as_str() {
                     "happy" | "talk_happy" => (0, 150, 100),
@@ -153,15 +146,10 @@ impl McpDispatcher {
                     "angry" | "error" => (168, 0, 0),
                     _ => (40, 40, 60),
                 };
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.set_led_color",
-                    "arguments": {
-                        "red": r,
-                        "green": g,
-                        "blue": b
-                    }
-                })
+                (
+                    "self.robot.set_led_color".to_string(),
+                    json!({ "red": r, "green": g, "blue": b }),
+                )
             }
             HardwareAction::PlayAnimation { animation } => {
                 let (yaw, pitch) = match animation.to_lowercase().as_str() {
@@ -174,78 +162,50 @@ impl McpDispatcher {
                     "wake" => (0, 15),
                     _ => (0, 0),
                 };
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.set_head_angles",
-                    "arguments": {
-                        "yaw": yaw,
-                        "pitch": pitch,
-                        "speed": 300
-                    }
-                })
+                (
+                    "self.robot.set_head_angles".to_string(),
+                    json!({ "yaw": yaw, "pitch": pitch, "speed": 300 }),
+                )
             }
-            HardwareAction::SetLedColor { red, green, blue } => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.set_led_color",
-                    "arguments": {
-                        "red": red,
-                        "green": green,
-                        "blue": blue
-                    }
-                })
-            }
-            HardwareAction::CreateReminder { duration_seconds, message, repeat } => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.create_reminder",
-                    "arguments": {
-                        "duration_seconds": duration_seconds,
-                        "message": message,
-                        "repeat": repeat
-                    }
-                })
-            }
-            HardwareAction::GetHeadAngles => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.get_head_angles",
-                    "arguments": {}
-                })
-            }
-            HardwareAction::GetReminders => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.get_reminders",
-                    "arguments": {}
-                })
-            }
-            HardwareAction::StopReminder { id } => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.stop_reminder",
-                    "arguments": { "id": id }
-                })
-            }
-            HardwareAction::EmergencyStop => {
-                json!({
-                    "type": "mcp",
-                    "tool": "self.robot.set_head_angles",
-                    "arguments": {
-                        "yaw": 0,
-                        "pitch": 0,
-                        "speed": 500
-                    }
-                })
-            }
-            HardwareAction::Custom { name, args } => {
-                json!({
-                    "type": "mcp",
-                    "tool": name,
+            HardwareAction::SetLedColor { red, green, blue } => (
+                "self.robot.set_led_color".to_string(),
+                json!({ "red": red, "green": green, "blue": blue }),
+            ),
+            HardwareAction::CreateReminder { duration_seconds, message, repeat } => (
+                "self.robot.create_reminder".to_string(),
+                json!({ "duration_seconds": duration_seconds, "message": message, "repeat": repeat }),
+            ),
+            HardwareAction::GetHeadAngles => (
+                "self.robot.get_head_angles".to_string(),
+                json!({}),
+            ),
+            HardwareAction::GetReminders => (
+                "self.robot.get_reminders".to_string(),
+                json!({}),
+            ),
+            HardwareAction::StopReminder { id } => (
+                "self.robot.stop_reminder".to_string(),
+                json!({ "id": id }),
+            ),
+            HardwareAction::EmergencyStop => (
+                "self.robot.set_head_angles".to_string(),
+                json!({ "yaw": 0, "pitch": 0, "speed": 500 }),
+            ),
+            HardwareAction::Custom { name, args } => (name, args),
+        };
+
+        json!({
+            "type": "mcp",
+            "payload": {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": name,
                     "arguments": args
-                })
+                }
             }
-        }
+        })
     }
 
     pub fn parse_command_text(input: &str) -> Option<HardwareAction> {

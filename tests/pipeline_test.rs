@@ -9,13 +9,13 @@ async fn test_pipeline_turn() {
 
     // Test Tier 1 Fast Action: "stop"
     let turn = pipeline.process_text_turn("stop").await.unwrap();
-    let has_mcp = turn.messages.iter().any(|m| matches!(m, ServerMessage::Mcp { tool, .. } if tool == "self.robot.set_head_angles"));
+    let has_mcp = turn.messages.iter().any(|m| matches!(m, ServerMessage::Mcp { payload } if payload.params.name == "self.robot.set_head_angles"));
     assert!(has_mcp, "Stop command must return Mcp tool message immediately for hal_mcp execution");
     assert!(!turn.audio_frames.is_empty(), "Fast action turn must generate binary Opus audio frames");
 
     // Test Tier 1 Fast Action: "wave"
     let turn = pipeline.process_text_turn("please wave to me").await.unwrap();
-    let has_wave = turn.messages.iter().any(|m| matches!(m, ServerMessage::Mcp { tool, .. } if tool == "self.robot.set_head_angles"));
+    let has_wave = turn.messages.iter().any(|m| matches!(m, ServerMessage::Mcp { payload } if payload.params.name == "self.robot.set_head_angles"));
     assert!(has_wave, "Wave command must return native hal_mcp head angle message immediately");
     assert!(!turn.audio_frames.is_empty(), "Wave turn must generate binary Opus audio frames");
 

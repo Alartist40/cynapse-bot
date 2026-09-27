@@ -126,7 +126,7 @@ impl PipelineEngine {
         if let Some(fast) = self.try_fast_action(text) {
             match fast {
                 PipelineTurnResult::FastAction { tool, arguments, reply_text } => {
-                    messages.push(ServerMessage::Mcp { tool, arguments });
+                    messages.push(ServerMessage::mcp(tool, arguments));
                     messages.push(ServerMessage::Tts {
                         state: "start".to_string(),
                         text: Some(reply_text.clone()),

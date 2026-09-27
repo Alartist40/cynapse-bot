@@ -89,10 +89,10 @@ pub async fn handle_api_robot_control(
             "pan": p,
             "tilt": t
         }));
-        mcp_messages.push(crate::protocol::ServerMessage::Mcp {
-            tool: "self.robot.set_head_angles".to_string(),
-            arguments: json!({ "yaw": p, "pitch": t, "speed": 150 }),
-        });
+        mcp_messages.push(crate::protocol::ServerMessage::mcp(
+            "self.robot.set_head_angles",
+            json!({ "yaw": p, "pitch": t, "speed": 150 }),
+        ));
     }
 
     if let (Some(r), Some(g), Some(b)) = (payload.r, payload.g, payload.b) {
@@ -102,10 +102,10 @@ pub async fn handle_api_robot_control(
             "g": g,
             "b": b
         }));
-        mcp_messages.push(crate::protocol::ServerMessage::Mcp {
-            tool: "self.robot.set_led_color".to_string(),
-            arguments: json!({ "red": r, "green": g, "blue": b }),
-        });
+        mcp_messages.push(crate::protocol::ServerMessage::mcp(
+            "self.robot.set_led_color",
+            json!({ "red": r, "green": g, "blue": b }),
+        ));
     }
 
     if let Some(ref anim_name) = payload.animation {
@@ -116,10 +116,10 @@ pub async fn handle_api_robot_control(
                 "keyframes_count": animation.keyframes.len()
             }));
             let (yaw, pitch) = animation.keyframes.first().map(|k| (k.pan, k.tilt)).unwrap_or((0, 0));
-            mcp_messages.push(crate::protocol::ServerMessage::Mcp {
-                tool: "self.robot.set_head_angles".to_string(),
-                arguments: json!({ "yaw": yaw, "pitch": pitch, "speed": 300 }),
-            });
+            mcp_messages.push(crate::protocol::ServerMessage::mcp(
+                "self.robot.set_head_angles",
+                json!({ "yaw": yaw, "pitch": pitch, "speed": 300 }),
+            ));
         }
     }
 
@@ -136,10 +136,10 @@ pub async fn handle_api_robot_control(
             "angry" | "error" => (168, 0, 0),
             _ => (40, 40, 60),
         };
-        mcp_messages.push(crate::protocol::ServerMessage::Mcp {
-            tool: "self.robot.set_led_color".to_string(),
-            arguments: json!({ "red": r, "green": g, "blue": b }),
-        });
+        mcp_messages.push(crate::protocol::ServerMessage::mcp(
+            "self.robot.set_led_color",
+            json!({ "red": r, "green": g, "blue": b }),
+        ));
     }
 
     // Forward to connected robot WebSocket via device_cmd_tx

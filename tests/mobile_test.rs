@@ -115,10 +115,12 @@ async fn test_mobile_robot_control_and_telemetry() {
     // Check that real ServerMessage::Mcp were emitted into device_cmd_tx
     let mcp1 = cmd_rx.recv().await.unwrap();
     match mcp1 {
-        cynpase_bot::protocol::ServerMessage::Mcp { tool, arguments } => {
-            assert_eq!(tool, "self.robot.set_head_angles");
-            assert_eq!(arguments["yaw"], 45);
-            assert_eq!(arguments["pitch"], -10);
+        cynpase_bot::protocol::ServerMessage::Mcp { payload } => {
+            assert_eq!(payload.jsonrpc, "2.0");
+            assert_eq!(payload.method, "tools/call");
+            assert_eq!(payload.params.name, "self.robot.set_head_angles");
+            assert_eq!(payload.params.arguments["yaw"], 45);
+            assert_eq!(payload.params.arguments["pitch"], -10);
         }
         _ => panic!("Expected Mcp message"),
     }
@@ -193,9 +195,11 @@ async fn test_mobile_control_reaches_connected_robot_socket() {
     if let Message::Text(text) = received_frame {
         let msg: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(msg["type"], "mcp");
-        assert_eq!(msg["tool"], "self.robot.set_head_angles");
-        assert_eq!(msg["arguments"]["yaw"], 30);
-        assert_eq!(msg["arguments"]["pitch"], 15);
+        assert_eq!(msg["payload"]["jsonrpc"], "2.0");
+        assert_eq!(msg["payload"]["method"], "tools/call");
+        assert_eq!(msg["payload"]["params"]["name"], "self.robot.set_head_angles");
+        assert_eq!(msg["payload"]["params"]["arguments"]["yaw"], 30);
+        assert_eq!(msg["payload"]["params"]["arguments"]["pitch"], 15);
     } else {
         panic!("FAIL-IF-DEAD-END: Expected Text frame containing Mcp JSON command, got {:?}", received_frame);
     }

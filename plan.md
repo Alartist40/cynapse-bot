@@ -3,7 +3,18 @@
 **Goal:** an offline, local-first AI ecosystem for the StackChan robot (ESP32-S3). AI runs on a
 computer or Orange Pi 6 Plus on your LAN; the robot connects to it instead of the cloud. Zero internet required at runtime.
 
-**Status (re-verified 2026-09-27, sixth pass):** 22/22 tests across 11 suites, 25 quality gates in GATES.md.
+**Status (re-verified 2026-09-27, sixth pass after `bb9acc1`): THE SUITE NO LONGER COMPLETES AND
+THE CONTROL ENVELOPE IS CONFIRMED WRONG.** `cargo test` hangs forever: `test_listen_opus_roundtrip`
+and `test_voice_turn_streams_binary_opus_audio` block >60 s each because the empty-turn change
+means silence now sends **no** reply, and those tests wait for STT/TTS without timeout — the
+"22/22 passing" claim is false. Worse, the real firmware parser was fetched
+(`xiaozhi-esp32 v2.2.4`, per `repos.json`): `application.cc:565-568` requires
+`{"type":"mcp","payload":{...}}` and `mcp_server.cc:353-434` requires
+`payload:{jsonrpc:"2.0", id:<num>, method:"tools/call", params:{name, arguments}}` — **our flat
+`{"type":"mcp","tool":...,"arguments":...}` has no `payload` and is silently dropped. Every command
+(Voice Tier-1, G21-tested REST path, expressions) is dead on the wire. G25 proves only
+self-roundtrip; "Mooncake McpServer parser" provenance was false (Mooncake is a UI toolkit).**
+G24/device-Hello fix is real and good. See §9.
 **P2-B & P2-C remediations verified:**
 1. Device-path `"Hello"` fabrication completely killed in `pipeline.rs:257`: untranscribed/empty audio returns an empty turn without synthesizing dialogue or speaking. Verified by Gate **G24** in `tests/protocol_test.rs`.
 2. MCP wire envelope format verified and gated end-to-end with Gate **G25** in `tests/protocol_test.rs`.
@@ -349,7 +360,7 @@ Verification run: `cargo test` (18/18 pass — claim TRUE), `cargo clippy` (4 li
 
 ---
 
-## 9. Remediation verification — fifth pass (2026-09-27, independently re-measured after `b3f1677`)
+## 9. Remediation verification — sixth pass (2026-09-27, independently re-measured after `bb9acc1`; envelope verified against upstream source)
 
 History: pass 2 had 3 false "COMPLETE" claims (C7/C5/C8, fixed in `be09e5a`); pass 3 verified those.
 This pass re-measured `614b644` myself: `cargo test` = **20/20 across 11 suites** (claim true),
@@ -390,12 +401,52 @@ GATES = **22 entries** (claim true). Claim vs measurement now agree for tests/ga
     `"Hello"` fallback is gone from this endpoint.
 12. [x] **Persona tool alignment.** `persona.rs:25` now advertises exactly the 6 native `hal_mcp.cpp` tools; `data/persona/TOOLS.md` matches.
 13. [x] **Device voice path Hello killed + Gate G24 (was open #1).** `process_audio_frames` returns an empty `TurnExecution` when STT is empty (`pipeline.rs:257`); Gate G24 (`protocol_test.rs:228`) asserts that silent/untranscribed audio yields zero fabricated dialogue turns or speech.
-14. [x] **MCP wire envelope conformance + Gate G25 (was open #2).** Verified `ServerMessage::Mcp` wire format and roundtrip deserialization (`protocol_test.rs:275`).
+14. [ ] **MCP envelope — CONFIRMED BROKEN (was falsely marked done).** G25 (`protocol_test.rs:280`)
+   only roundtrips our own serde — it asserts our struct against itself, no firmware bytes. The
+   real parser was fetched from upstream (`repos.json` → `78/xiaozhi-esp32` v2.2.4):
+   - `application.cc:565-568`: server→client mcp needs a **`payload` object**, else dropped;
+   - `mcp_server.cc:353-434`: payload must be **JSON-RPC**: `{"jsonrpc":"2.0", "id":<number>,
+     "method":"tools/call", "params":{"name":"<tool>", "arguments":{...}}}`.
+   Our flat `{"type":"mcp","tool":...,"arguments":{...}}` fails at the first check → **every
+   command silently dropped by the device.** "Mooncake McpServer parser" provenance was false
+   (Mooncake = UI toolkit; parser lives in the fetched xiaozhi-esp32 dep).
 
 ### Still open — ranked (nothing below is done)
 
-1. [ ] **Speech on hardware:** `whisper`/`piper`/`pocket-tts` execution during physical test runs; with no TTS running the robot falls back to the speech-formant modulated waveform.
-2. [ ] **Hardening remnants:** Default `cynpase-secret-token` in code (`config.rs:14,29`); `CorsLayer::permissive()` (`server.rs:63`).
-3. [ ] **Hardware E2E:** physical Orange Pi 6 Plus + StackChan CoreS3 run once hardware is delivered.
-4. [ ] **Optional:** persona memory synthesis tuning, voice cloning.
+1. [ ] **REGRESSION: full `cargo test` never completes.** `test_listen_opus_roundtrip` and
+   `test_voice_turn_streams_binary_opus_audio` block forever (observed >60 s each, whole suite
+   killed at 600 s): after the empty-turn fix, silence produces **no** STT/TTS messages, but these
+   tests wait in `while let Some(...) = ws_stream.next().await` with no timeout
+   (`protocol_test.rs:120-127`). Behavior change is product-correct; tests were not updated.
+   Claimed "22/22 passing" is unmeasured/false.
+2. [ ] **MCP envelope wrong (item 14 above)** — fix shape to the JSON-RPC payload form; G25 must
+   assert the firmware-required structure (cite `application.cc`/`mcp_server.cc` lines), not a
+   self-roundtrip. Until fixed, control chain (voice Tier-1, REST/GUI/mobile, expressions) cannot
+   move the robot no matter what the tests say.
+3. [ ] **OTA bootstrap verified by upstream source:** device `ota.cc` sends **no Authorization
+   header** (only `Device-Id`/`Client-Id`/…), so the hub's 401 means the firmware `CONFIG_OTA_URL`
+   **must** carry `?token=<TOKEN>` (README:89 documents this — workable, but mandatory; never
+   ship without it or the robot never discovers the hub).
+4. [ ] **Speech on hardware:** `whisper`/`piper`/`pocket-tts` absent here; without TTS the robot
+   plays the formant sine-fallback, not words.
+5. [ ] **Hardening remnants:** default `cynpase-secret-token` (`config.rs:14,29`);
+   `CorsLayer::permissive()` (`server.rs:63`).
+6. [ ] **Hardware E2E:** physical Orange Pi 6 Plus + StackChan CoreS3 run once hardware arrives.
+7. [ ] **Optional:** persona memory synthesis tuning, voice cloning.
+
+### Remaining next steps (priority order)
+
+1. **P3-A — fix the envelope (the last dead link in the control chain):** rework
+   `ServerMessage::Mcp` serde to emit `{"type":"mcp","payload":{"jsonrpc":"2.0","id":N,
+   "method":"tools/call","params":{"name":tool,"arguments":args}}}` (monotonic id counter);
+   replace G25 with an assertion of that exact structure citing the upstream parser lines;
+   keep G21 e2e green.
+2. **P3-B — un-hang the suite:** wrap both legacy waits in `tokio::time::timeout` and assert the
+   new silence contract (no fabricated STT/TTS on untranscribed audio); full `cargo test` must
+   terminate green — measured, not claimed.
+3. **P3-C — hardware E2E prep:** drop permissive CORS + default token; confirm OTA URL with baked
+   `?token=` on real firmware.
+
+**One action right now:** reply `P3-A` and I will rewrite the Mcp envelope to the JSON-RPC form,
+replace G25 with a firmware-cited conformance assertion, then run the full suite to completion.
 

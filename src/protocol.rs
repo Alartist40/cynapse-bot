@@ -52,6 +52,35 @@ pub enum ClientMessage {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpCallParams {
+    pub name: String,
+    pub arguments: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct McpCallPayload {
+    #[serde(default = "default_jsonrpc_version")]
+    pub jsonrpc: String,
+    #[serde(default = "default_mcp_id")]
+    pub id: u64,
+    #[serde(default = "default_mcp_method")]
+    pub method: String,
+    pub params: McpCallParams,
+}
+
+fn default_jsonrpc_version() -> String {
+    "2.0".to_string()
+}
+
+fn default_mcp_id() -> u64 {
+    1
+}
+
+fn default_mcp_method() -> String {
+    "tools/call".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
     Hello {
@@ -73,8 +102,23 @@ pub enum ServerMessage {
         emotion: Option<String>,
     },
     Mcp {
-        tool: String,
-        arguments: serde_json::Value,
+        payload: McpCallPayload,
     },
     Goodbye,
+}
+
+impl ServerMessage {
+    pub fn mcp(tool: impl Into<String>, arguments: serde_json::Value) -> Self {
+        Self::Mcp {
+            payload: McpCallPayload {
+                jsonrpc: "2.0".to_string(),
+                id: 1,
+                method: "tools/call".to_string(),
+                params: McpCallParams {
+                    name: tool.into(),
+                    arguments,
+                },
+            },
+        }
+    }
 }
