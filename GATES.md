@@ -115,6 +115,17 @@
   EXPECT: test_mobile_chat_and_status ... ok
   EVIDENCE: test test_mobile_chat_and_status ... ok (0.00s)
 
+- [x] G24: Robot WebSocket path untranscribed audio yields zero fabricated "Hello" turns (device fail-if-Hello gate)
+  CHECK: cargo test --test protocol_test test_device_path_fail_if_hello_on_untranscribed_audio -- --nocapture
+  EXPECT: test_device_path_fail_if_hello_on_untranscribed_audio ... ok
+  EVIDENCE: test test_device_path_fail_if_hello_on_untranscribed_audio ... ok (0.30s)
+
+- [x] G25: ServerMessage::Mcp JSON wire envelope exact serialization & deserialization conformance
+  CHECK: cargo test --test protocol_test test_mcp_wire_envelope_conformance -- --nocapture
+  EXPECT: test_mcp_wire_envelope_conformance ... ok
+  EVIDENCE: test test_mcp_wire_envelope_conformance ... ok (0.00s)
+
+
 
 
 

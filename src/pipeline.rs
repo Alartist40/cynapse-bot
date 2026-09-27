@@ -253,11 +253,14 @@ impl PipelineEngine {
     /// Process audio utterance frames
     pub async fn process_audio_frames(&self, frames: Vec<Vec<u8>>) -> anyhow::Result<TurnExecution> {
         let transcribed_text = self.audio_engine.transcribe(&frames).await?;
-        let query = if transcribed_text.trim().is_empty() {
-            "Hello"
-        } else {
-            &transcribed_text
-        };
-        self.process_text_turn(query).await
+        if transcribed_text.trim().is_empty() {
+            // No speech transcribed from audio frames: never fabricate a fake "Hello" turn!
+            return Ok(TurnExecution {
+                messages: Vec::new(),
+                audio_frames: Vec::new(),
+                spoken_text: String::new(),
+            });
+        }
+        self.process_text_turn(&transcribed_text).await
     }
 }

@@ -221,3 +221,86 @@ async fn test_voice_turn_streams_binary_opus_audio() {
     let total_bytes: usize = binary_frames.iter().map(|f| f.len()).sum();
     assert!(total_bytes >= 10, "Total binary Opus audio bytes must be > 0 (got {})", total_bytes);
 }
+
+#[tokio::test]
+async fn test_device_path_fail_if_hello_on_untranscribed_audio() {
+    let (addr, _config) = spawn_test_server().await;
+    let url = format!("ws://{}/xiaozhi/ws?token=secret-token", addr);
+
+    let (mut ws_stream, _) = connect_async(&url).await.expect("Failed to connect to WS");
+
+    // 1. Send listen start
+    let listen_start = json!({
+        "type": "listen",
+        "state": "start",
+        "mode": "auto"
+    });
+    ws_stream
+        .send(Message::Text(listen_start.to_string().into()))
+        .await
+        .unwrap();
+
+    // 2. Send empty / silence packets (untranscribable)
+    let silent_frame = vec![0x00, 0x00, 0x00, 0x00];
+    ws_stream.send(Message::Binary(silent_frame.into())).await.unwrap();
+
+    // 3. Send listen stop
+    let listen_stop = json!({
+        "type": "listen",
+        "state": "stop"
+    });
+    ws_stream
+        .send(Message::Text(listen_stop.to_string().into()))
+        .await
+        .unwrap();
+
+    // 4. Collect any responses with a 300ms timeout
+    let mut received_messages = Vec::new();
+    while let Ok(Some(Ok(msg))) = tokio::time::timeout(tokio::time::Duration::from_millis(300), ws_stream.next()).await {
+        if let Message::Text(text) = msg {
+            let val: serde_json::Value = serde_json::from_str(&text).unwrap();
+            received_messages.push(val);
+        }
+    }
+
+    // 5. FAIL-IF-HELLO GATE: Ensure no STT/LLM turn with text="Hello" was fabricated
+    for msg in &received_messages {
+        if msg["type"] == "stt" {
+            assert_ne!(msg["text"], "Hello", "FAIL-IF-HELLO: Device path fabricated 'Hello' STT transcript on empty speech!");
+        }
+        if msg["type"] == "tts" {
+            if let Some(text) = msg["text"].as_str() {
+                assert!(!text.to_lowercase().contains("how can i help you"), "FAIL-IF-HELLO: Fabricated conversational turn occurred on empty audio");
+            }
+        }
+    }
+}
+
+#[test]
+fn test_mcp_wire_envelope_conformance() {
+    use cynpase_bot::protocol::ServerMessage;
+
+    // Test exact wire serialization format for Mcp tool execution
+    let msg = ServerMessage::Mcp {
+        tool: "self.robot.set_head_angles".to_string(),
+        arguments: json!({
+            "yaw": 30,
+            "pitch": 15,
+            "speed": 150
+        }),
+    };
+
+    let serialized = serde_json::to_string(&msg).unwrap();
+    let json_val: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+
+    // Verify root envelope schema
+    assert_eq!(json_val["type"], "mcp", "Envelope must have type: 'mcp'");
+    assert_eq!(json_val["tool"], "self.robot.set_head_angles");
+    assert_eq!(json_val["arguments"]["yaw"], 30);
+    assert_eq!(json_val["arguments"]["pitch"], 15);
+    assert_eq!(json_val["arguments"]["speed"], 150);
+
+    // Verify deserialization back to ServerMessage::Mcp
+    let roundtrip: ServerMessage = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(roundtrip, msg);
+}
