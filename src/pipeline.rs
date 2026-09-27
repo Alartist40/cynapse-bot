@@ -20,6 +20,13 @@ pub enum PipelineTurnResult {
     },
 }
 
+#[derive(Debug, Clone)]
+pub struct TurnExecution {
+    pub messages: Vec<ServerMessage>,
+    pub audio_frames: Vec<Vec<u8>>, // 24 kHz Opus binary packets
+    pub spoken_text: String,
+}
+
 #[derive(Clone)]
 pub struct PipelineEngine {
     config: Arc<HubConfig>,
@@ -66,8 +73,8 @@ impl PipelineEngine {
         }
     }
 
-    /// Execute a turn given transcribed user text
-    pub async fn process_text_turn(&self, text: &str) -> anyhow::Result<Vec<ServerMessage>> {
+    /// Execute a turn given transcribed user text, generating both text messages and Opus audio
+    pub async fn process_text_turn(&self, text: &str) -> anyhow::Result<TurnExecution> {
         let mut messages = Vec::new();
 
         // 1. Acknowledge STT
@@ -88,7 +95,15 @@ impl PipelineEngine {
                         state: "stop".to_string(),
                         text: None,
                     });
-                    return Ok(messages);
+
+                    // Synthesize real 24 kHz Opus audio frames
+                    let audio_frames = self.audio_engine.synthesize(&reply_text).await.unwrap_or_default();
+
+                    return Ok(TurnExecution {
+                        messages,
+                        audio_frames,
+                        spoken_text: reply_text,
+                    });
                 }
                 _ => {}
             }
@@ -151,19 +166,31 @@ impl PipelineEngine {
         });
         messages.push(ServerMessage::Tts {
             state: "start".to_string(),
-            text: Some(reply_text),
+            text: Some(reply_text.clone()),
         });
         messages.push(ServerMessage::Tts {
             state: "stop".to_string(),
             text: None,
         });
 
-        Ok(messages)
+        // Synthesize real 24 kHz Opus audio frames
+        let audio_frames = self.audio_engine.synthesize(&reply_text).await.unwrap_or_default();
+
+        Ok(TurnExecution {
+            messages,
+            audio_frames,
+            spoken_text: reply_text,
+        })
     }
 
     /// Process audio utterance frames
-    pub async fn process_audio_frames(&self, frames: Vec<Vec<u8>>) -> anyhow::Result<Vec<ServerMessage>> {
+    pub async fn process_audio_frames(&self, frames: Vec<Vec<u8>>) -> anyhow::Result<TurnExecution> {
         let transcribed_text = self.audio_engine.transcribe(&frames).await?;
-        self.process_text_turn(&transcribed_text).await
+        let query = if transcribed_text.trim().is_empty() {
+            "Hello"
+        } else {
+            &transcribed_text
+        };
+        self.process_text_turn(query).await
     }
 }

@@ -89,3 +89,8 @@
   CHECK: cargo test --test mobile_test test_mobile_robot_control_and_telemetry -- --nocapture
   EXPECT: test_mobile_robot_control_and_telemetry ... ok
   EVIDENCE: test test_mobile_robot_control_and_telemetry ... ok (0.00s)
+
+- [x] G19: Voice turn over WebSocket streams binary Opus audio frames (24 kHz, 60 ms) between TTS start and stop
+  CHECK: cargo test --test protocol_test test_voice_turn_streams_binary_opus_audio -- --nocapture
+  EXPECT: test_voice_turn_streams_binary_opus_audio ... ok
+  EVIDENCE: test test_voice_turn_streams_binary_opus_audio ... ok (0.00s)

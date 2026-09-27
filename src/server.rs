@@ -198,17 +198,33 @@ async fn handle_socket(
 
                             // Process audio frames through pipeline
                             match state.pipeline.process_audio_frames(frames).await {
-                                Ok(replies) => {
-                                    for reply in replies {
-                                        let resp = serde_json::to_string(&reply).unwrap();
+                                Ok(turn) => {
+                                    for msg in &turn.messages {
+                                        let resp = serde_json::to_string(msg).unwrap();
                                         let _ = state.telemetry_tx.send(TelemetryEvent {
                                             event_type: "turn_message".to_string(),
-                                            payload: serde_json::to_value(&reply).unwrap_or_default(),
+                                            payload: serde_json::to_value(msg).unwrap_or_default(),
                                             timestamp_ms: 0,
                                         });
                                         if let Err(e) = sender.send(Message::Text(resp.into())).await {
                                             error!("Failed to send pipeline reply: {}", e);
                                             break;
+                                        }
+
+                                        // Stream binary Opus audio frames between tts start and stop
+                                        if let ServerMessage::Tts { state: tts_state, .. } = msg {
+                                            if tts_state == "start" {
+                                                info!(
+                                                    frames_count = turn.audio_frames.len(),
+                                                    "Streaming 24kHz binary Opus audio frames to device"
+                                                );
+                                                for frame in &turn.audio_frames {
+                                                    if let Err(e) = sender.send(Message::Binary(frame.clone().into())).await {
+                                                        error!("Failed to send binary Opus audio frame: {}", e);
+                                                        break;
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

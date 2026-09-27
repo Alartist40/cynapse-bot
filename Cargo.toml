@@ -24,6 +24,7 @@ cynapse-engine = { path = "../cynapse-mini/engine/cynapse-engine" }
 cynapse-memory = { path = "../cynapse-mini/memory/cynapse-memory" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 eframe = "0.29"
+opus = "0.3"
 
 [[bin]]
 name = "cynpase-bot"

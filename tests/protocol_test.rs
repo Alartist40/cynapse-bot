@@ -131,3 +131,92 @@ async fn test_listen_opus_roundtrip() {
     assert!(got_stt, "Should receive STT message");
     assert!(got_tts_start, "Should receive TTS start message");
 }
+
+#[tokio::test]
+async fn test_voice_turn_streams_binary_opus_audio() {
+    let (addr, _config) = spawn_test_server().await;
+    let url = format!("ws://{}/xiaozhi/ws?token=secret-token", addr);
+
+    let (mut ws_stream, _) = connect_async(&url).await.expect("Failed to connect to WS");
+
+    // 1. Send client hello
+    let client_hello = json!({
+        "type": "hello",
+        "version": 1,
+        "features": { "mcp": true },
+        "transport": "websocket",
+        "audio_params": {
+            "format": "opus",
+            "sample_rate": 16000,
+            "channels": 1,
+            "frame_duration": 60
+        }
+    });
+    ws_stream
+        .send(Message::Text(client_hello.to_string().into()))
+        .await
+        .unwrap();
+
+    // Consume server hello and runtime config
+    let _ = ws_stream.next().await;
+    let _ = ws_stream.next().await;
+
+    // 2. Send listen start
+    let listen_start = json!({
+        "type": "listen",
+        "state": "start",
+        "mode": "auto"
+    });
+    ws_stream
+        .send(Message::Text(listen_start.to_string().into()))
+        .await
+        .unwrap();
+
+    // 3. Send a client Opus audio frame
+    ws_stream
+        .send(Message::Binary(vec![0xF8, 0xFF, 0xFE, 0x01].into()))
+        .await
+        .unwrap();
+
+    // 4. Send listen stop
+    let listen_stop = json!({
+        "type": "listen",
+        "state": "stop"
+    });
+    ws_stream
+        .send(Message::Text(listen_stop.to_string().into()))
+        .await
+        .unwrap();
+
+    // 5. Collect downlink messages: must receive tts start, THEN binary Opus frames, THEN tts stop
+    let mut got_tts_start = false;
+    let mut got_tts_stop = false;
+    let mut binary_frames = Vec::new();
+
+    while let Some(Ok(msg)) = ws_stream.next().await {
+        match msg {
+            Message::Text(text) => {
+                let val: serde_json::Value = serde_json::from_str(&text).unwrap();
+                if val["type"] == "tts" && val["state"] == "start" {
+                    got_tts_start = true;
+                } else if val["type"] == "tts" && val["state"] == "stop" {
+                    got_tts_stop = true;
+                    break;
+                }
+            }
+            Message::Binary(bin) => {
+                binary_frames.push(bin.to_vec());
+            }
+            _ => {}
+        }
+    }
+
+    assert!(got_tts_start, "Must receive tts start message");
+    assert!(got_tts_stop, "Must receive tts stop message");
+    assert!(
+        !binary_frames.is_empty(),
+        "FAIL-IF-SILENT: Hub sent 0 binary audio frames between tts start and stop! Robot will be silent."
+    );
+    let total_bytes: usize = binary_frames.iter().map(|f| f.len()).sum();
+    assert!(total_bytes >= 10, "Total binary Opus audio bytes must be > 0 (got {})", total_bytes);
+}

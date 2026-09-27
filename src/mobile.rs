@@ -135,31 +135,20 @@ pub async fn handle_api_chat_send(
     }
 
     match state.pipeline.process_text_turn(&payload.message).await {
-        Ok(replies) => {
-            let mut reply_texts = Vec::new();
-            for reply in &replies {
+        Ok(turn) => {
+            for reply in &turn.messages {
                 let _ = state.telemetry_tx.send(TelemetryEvent {
                     event_type: "mobile_chat_turn".to_string(),
                     payload: serde_json::to_value(reply).unwrap_or_default(),
                     timestamp_ms: 0,
                 });
-                if let crate::protocol::ServerMessage::Tts { text, .. } = reply {
-                    if let Some(t) = text {
-                        reply_texts.push(t.clone());
-                    }
-                }
             }
-
-            let combined_text = if reply_texts.is_empty() {
-                "OK".to_string()
-            } else {
-                reply_texts.join(" ")
-            };
 
             (StatusCode::OK, Json(json!({
                 "status": "ok",
-                "response": combined_text,
-                "replies_count": replies.len()
+                "response": turn.spoken_text,
+                "replies_count": turn.messages.len(),
+                "audio_frames_count": turn.audio_frames.len()
             }))).into_response()
         }
         Err(e) => {
