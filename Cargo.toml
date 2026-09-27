@@ -23,6 +23,15 @@ cynapse-core = { path = "../cynapse-mini/harness/cynapse-core" }
 cynapse-engine = { path = "../cynapse-mini/engine/cynapse-engine" }
 cynapse-memory = { path = "../cynapse-mini/memory/cynapse-memory" }
 rusqlite = { version = "0.32", features = ["bundled"] }
+eframe = "0.29"
+
+[[bin]]
+name = "cynpase-bot"
+path = "src/main.rs"
+
+[[bin]]
+name = "cynpase-gui"
+path = "src/gui_main.rs"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
