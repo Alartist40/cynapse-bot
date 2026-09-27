@@ -65,17 +65,17 @@
   EXPECT: test_celestial_spatial_layout ... ok
   EVIDENCE: test test_celestial_spatial_layout ... ok (0.00s)
 
-- [ ] G14: Desktop GUI crate and binary compiles cleanly
+- [x] G14: Desktop GUI crate and binary compiles cleanly
   CHECK: cargo check --tests
   EXPECT: Finished
-  EVIDENCE: pending
+  EVIDENCE: Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.52s
 
-- [ ] G15: Desktop GUI state manager processes control events, telemetry, and pan/tilt updates
+- [x] G15: Desktop GUI state manager processes control events, telemetry, and pan/tilt updates
   CHECK: cargo test --test gui_test test_gui_state_manager -- --nocapture
   EXPECT: test_gui_state_manager ... ok
-  EVIDENCE: pending
+  EVIDENCE: test test_gui_state_manager ... ok (0.00s)
 
-- [ ] G16: Mazzaroth constellation 2D/3D viewport projection calculates screen positions
+- [x] G16: Mazzaroth constellation 2D/3D viewport projection calculates screen positions
   CHECK: cargo test --test gui_test test_constellation_viewport_projection -- --nocapture
   EXPECT: test_constellation_viewport_projection ... ok
-  EVIDENCE: pending
+  EVIDENCE: test test_constellation_viewport_projection ... ok (0.00s)
