@@ -33,6 +33,7 @@ pub struct PipelineEngine {
     http_client: reqwest::Client,
     pub audio_engine: Arc<AudioEngine>,
     pub persona_manager: Arc<Mutex<PersonaManager>>,
+    pub history: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl PipelineEngine {
@@ -44,6 +45,7 @@ impl PipelineEngine {
             http_client: reqwest::Client::new(),
             audio_engine,
             persona_manager,
+            history: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -130,19 +132,33 @@ impl PipelineEngine {
             persona.build_system_prompt()
         };
 
+        let mut llm_messages = vec![
+            json!({
+                "role": "system",
+                "content": system_prompt
+            }),
+        ];
+
+        // Append recent multi-turn history
+        {
+            let hist = self.history.lock().await;
+            for (role, content) in hist.iter().rev().take(10).rev() {
+                llm_messages.push(json!({
+                    "role": role,
+                    "content": content
+                }));
+            }
+        }
+
+        llm_messages.push(json!({
+            "role": "user",
+            "content": text
+        }));
+
         info!(model = %self.config.model_name, "Calling Leafcutter LLM");
         let payload = json!({
             "model": self.config.model_name,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": text
-                }
-            ],
+            "messages": llm_messages,
             "max_tokens": 128,
             "temperature": 0.7
         });
@@ -168,6 +184,17 @@ impl PipelineEngine {
                 format!("Leafcutter LLM offline fallback ({}).", e)
             }
         };
+
+        // Update multi-turn history ring buffer
+        {
+            let mut hist = self.history.lock().await;
+            hist.push(("user".to_string(), text.to_string()));
+            hist.push(("assistant".to_string(), reply_text.clone()));
+            if hist.len() > 20 {
+                let excess = hist.len() - 20;
+                hist.drain(0..excess);
+            }
+        }
 
         // Record turn in Dendrite memory
         {

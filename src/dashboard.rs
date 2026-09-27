@@ -87,7 +87,20 @@ pub async fn handle_dashboard_html() -> Html<&'static str> {
                 const data = JSON.parse(e.data);
                 const entry = document.createElement('div');
                 entry.className = 'feed-entry';
-                entry.innerHTML = `<span class="ts">[${new Date().toLocaleTimeString()}]</span> <strong>${data.event_type}:</strong> ${JSON.stringify(data.payload)}`;
+
+                const ts = document.createElement('span');
+                ts.className = 'ts';
+                ts.textContent = `[${new Date().toLocaleTimeString()}] `;
+
+                const strong = document.createElement('strong');
+                strong.textContent = `${data.event_type}: `;
+
+                const payload = document.createTextNode(typeof data.payload === 'string' ? data.payload : JSON.stringify(data.payload));
+
+                entry.appendChild(ts);
+                entry.appendChild(strong);
+                entry.appendChild(payload);
+
                 feedEl.appendChild(entry);
                 feedEl.scrollTop = feedEl.scrollHeight;
             } catch(err) {

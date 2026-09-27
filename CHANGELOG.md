@@ -2,6 +2,34 @@
 
 All notable changes to `cynpase-bot` will be documented in this file.
 
+## [0.4.0] - 2026-09-27
+
+### Fixed & Hardened (Full Reality Remediation)
+- **Real 24 kHz Opus Audio Downlink (C1):**
+  - Integrated `opus` crate encoding linear PCM to 24 kHz 1-channel 60 ms binary Opus packets.
+  - Updated WebSocket server to stream `Message::Binary` Opus audio frames immediately between `tts start` and `tts stop`.
+  - Added Gate G19 fail-if-silent verification test.
+- **Real 16 kHz Opus STT Pipeline (C2):**
+  - Added native Opus frame decoding to 16 kHz mono linear PCM WAV before feeding Whisper.
+  - Eliminated all fake string fallback transcripts (`"Audio speech input (N packets)"`).
+- **Native Xiaozhi MCP Control (C3):**
+  - Replaced non-standard `Action`/`Config` message types with native `ServerMessage::Mcp` targeting StackChan `hal_mcp.cpp`.
+  - Fast-action rules directly dispatch `self.robot.set_head_angles`, `self.robot.set_led_color`, and `play_animation`.
+- **Zero External Path Dependencies (C4):**
+  - Removed `../cynapse-mini` path dependencies from `Cargo.toml`.
+  - Wired in-tree `MazzarothEngine` directly into `PersonaManager` and `PipelineEngine`, enabling clean compilation on any fresh clone.
+- **Auth Hardening & XSS Remediation (C5, C9, G20):**
+  - Enforced authentication on `GET /xiaozhi/ota/` to eliminate plaintext master token leaks.
+  - Replaced unescaped `innerHTML` in dashboard with safe DOM nodes (`textContent`) to prevent XSS.
+  - Supported `CYNPASE_AUTH_TOKEN` environment variable and auto-generated secure tokens in `.env`.
+- **Desktop GUI & Mobile PWA Live I/O (C6, C7):**
+  - Added real background worker thread to `cynpase-gui` dispatching HTTP POST commands to `/api/robot/control`.
+  - Replaced hardcoded mobile PTT string with real browser `SpeechRecognition` API.
+  - Added multi-turn conversation history buffer in `PipelineEngine` for contextual dialogue (H2).
+- **Production Deployment Truth (C8):**
+  - Updated `deploy/install-opi.sh` to compile `cargo build --release` prior to service activation.
+  - Configured `cynpase-bot.service` with `EnvironmentFile` and automatic host IP detection.
+
 ## [0.3.0] - 2026-09-27
 
 ### Added

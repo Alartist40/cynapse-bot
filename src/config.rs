@@ -11,13 +11,13 @@ pub struct HubConfig {
     #[arg(long, default_value = "ws://127.0.0.1:8000/xiaozhi/ws")]
     pub public_ws_url: String,
 
-    #[arg(long, default_value = "cynpase-secret-token")]
+    #[arg(long, env = "CYNPASE_AUTH_TOKEN", default_value = "cynpase-secret-token")]
     pub auth_token: String,
 
-    #[arg(long, default_value = "http://127.0.0.1:8081/v1/chat/completions")]
+    #[arg(long, env = "CYNPASE_LEAFCUTTER_URL", default_value = "http://127.0.0.1:8081/v1/chat/completions")]
     pub leafcutter_url: String,
 
-    #[arg(long, default_value = "qwen2.5-7b")]
+    #[arg(long, env = "CYNPASE_MODEL_NAME", default_value = "qwen2.5-7b")]
     pub model_name: String,
 }
 

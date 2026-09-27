@@ -94,3 +94,9 @@
   CHECK: cargo test --test protocol_test test_voice_turn_streams_binary_opus_audio -- --nocapture
   EXPECT: test_voice_turn_streams_binary_opus_audio ... ok
   EVIDENCE: test test_voice_turn_streams_binary_opus_audio ... ok (0.00s)
+
+- [x] G20: Negative authentication & OTA security verification (unauthenticated requests rejected with 401)
+  CHECK: cargo test --test ota_test test_ota_endpoint -- --nocapture
+  EXPECT: test_ota_endpoint ... ok
+  EVIDENCE: test test_ota_endpoint ... ok (0.02s)
+

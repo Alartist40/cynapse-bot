@@ -968,12 +968,48 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
         }
 
         let isRecording = false;
+        let speechRecognizer = null;
+        let recognizedSpeech = '';
+
+        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            speechRecognizer = new SpeechRec();
+            speechRecognizer.continuous = true;
+            speechRecognizer.interimResults = true;
+            speechRecognizer.lang = 'en-US';
+
+            speechRecognizer.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        recognizedSpeech += event.results[i][0].transcript;
+                    } else {
+                        interim += event.results[i][0].transcript;
+                    }
+                }
+                if (interim) {
+                    document.getElementById('pttLabel').innerText = `"${interim}"`;
+                }
+            };
+
+            speechRecognizer.onerror = (e) => {
+                console.warn('Speech recognition error:', e.error);
+            };
+        }
+
         function startPtt(e) {
             e.preventDefault();
             isRecording = true;
+            recognizedSpeech = '';
             document.getElementById('pttButton').classList.add('recording');
             document.getElementById('pttLabel').innerText = 'Listening... (Release to send)';
             haptic();
+
+            if (speechRecognizer) {
+                try {
+                    speechRecognizer.start();
+                } catch(err) {}
+            }
         }
 
         async function stopPtt(e) {
@@ -983,20 +1019,31 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
             document.getElementById('pttButton').classList.remove('recording');
             document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
             haptic();
-            addChatBubble('[Voice Input Captured]', 'user');
-            sendTextSample("What can you see and do?");
-        }
 
-        async function sendTextSample(msg) {
-            try {
-                const res = await fetch('/api/chat/send', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: msg })
-                });
-                const data = await res.json();
-                if (data.response) addChatBubble(data.response, 'bot');
-            } catch(e) {}
+            if (speechRecognizer) {
+                try {
+                    speechRecognizer.stop();
+                } catch(err) {}
+            }
+
+            // Give recognition a moment to finalize
+            setTimeout(async () => {
+                const textToSend = recognizedSpeech.trim();
+                if (textToSend.length > 0) {
+                    addChatBubble(textToSend, 'user');
+                    try {
+                        const res = await fetch('/api/chat/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: textToSend })
+                        });
+                        const data = await res.json();
+                        if (data.response) addChatBubble(data.response, 'bot');
+                    } catch(err) {
+                        addChatBubble('Error: Hub unreachable', 'bot');
+                    }
+                }
+            }, 300);
         }
 
         const celCanvas = document.getElementById('celestialCanvas');

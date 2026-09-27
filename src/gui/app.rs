@@ -1,21 +1,103 @@
 use crate::gui::projection::ViewportProjection;
 use crate::gui::state::GuiState;
 use eframe::egui::{self, Color32, Pos2, Stroke, Vec2};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
+use std::time::Duration;
 
 pub struct CynpaseApp {
     pub state: GuiState,
+    pub tx_cmd: Sender<serde_json::Value>,
+    pub rx_events: Receiver<(String, String)>,
+    last_sent_pan: i32,
+    last_sent_tilt: i32,
+    last_sent_rgb: (u8, u8, u8),
 }
 
 impl CynpaseApp {
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        let (tx_cmd, rx_cmd) = channel::<serde_json::Value>();
+        let (tx_events, rx_events) = channel::<(String, String)>();
+
+        let hub_url = "http://127.0.0.1:8000".to_string();
+
+        // Spawn background network worker thread
+        let worker_hub_url = hub_url.clone();
+        let worker_tx_events = tx_events.clone();
+        thread::spawn(move || {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_millis(500))
+                .build()
+                .unwrap_or_default();
+
+            // Command loop
+            while let Ok(cmd) = rx_cmd.recv() {
+                let url = format!("{}/api/robot/control", worker_hub_url);
+                match client.post(&url).json(&cmd).send() {
+                    Ok(resp) => {
+                        let _ = worker_tx_events.send((
+                            "HUB_ACK".to_string(),
+                            format!("Status: {}", resp.status()),
+                        ));
+                    }
+                    Err(e) => {
+                        let _ = worker_tx_events.send((
+                            "ERROR".to_string(),
+                            format!("Hub unreachable: {}", e),
+                        ));
+                    }
+                }
+            }
+        });
+
+        // Spawn periodic status polling thread
+        let status_hub_url = hub_url.clone();
+        let status_tx_events = tx_events.clone();
+        thread::spawn(move || {
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_millis(500))
+                .build()
+                .unwrap_or_default();
+
+            loop {
+                thread::sleep(Duration::from_secs(2));
+                let url = format!("{}/api/status", status_hub_url);
+                if let Ok(resp) = client.get(&url).send() {
+                    if resp.status().is_success() {
+                        let _ = status_tx_events.send(("SYS_STATUS".to_string(), "ONLINE".to_string()));
+                    }
+                } else {
+                    let _ = status_tx_events.send(("SYS_STATUS".to_string(), "OFFLINE".to_string()));
+                }
+            }
+        });
+
         Self {
             state: GuiState::default(),
+            tx_cmd,
+            rx_events,
+            last_sent_pan: 0,
+            last_sent_tilt: 0,
+            last_sent_rgb: (0, 168, 0),
         }
+    }
+
+    pub fn dispatch_control(&self, payload: serde_json::Value) {
+        let _ = self.tx_cmd.send(payload);
     }
 }
 
 impl eframe::App for CynpaseApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Drain incoming background events
+        while let Ok((sender, msg)) = self.rx_events.try_recv() {
+            if sender == "SYS_STATUS" {
+                self.state.connected = msg == "ONLINE";
+            } else {
+                self.state.add_transcript(&sender, &msg);
+            }
+        }
+
         // Top Header
         egui::TopBottomPanel::top("header").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -34,12 +116,29 @@ impl eframe::App for CynpaseApp {
 
             ui.group(|ui| {
                 ui.label("Pan / Tilt Servo Control");
-                ui.add(egui::Slider::new(&mut self.state.pan, -90..=90).text("Pan (Yaw)"));
-                ui.add(egui::Slider::new(&mut self.state.tilt, -30..=30).text("Tilt (Pitch)"));
+                let pan_res = ui.add(egui::Slider::new(&mut self.state.pan, -90..=90).text("Pan (Yaw)"));
+                let tilt_res = ui.add(egui::Slider::new(&mut self.state.tilt, -30..=30).text("Tilt (Pitch)"));
+
+                if pan_res.changed() || tilt_res.changed() {
+                    if self.state.pan != self.last_sent_pan || self.state.tilt != self.last_sent_tilt {
+                        self.last_sent_pan = self.state.pan;
+                        self.last_sent_tilt = self.state.tilt;
+                        self.dispatch_control(serde_json::json!({
+                            "pan": self.state.pan,
+                            "tilt": self.state.tilt,
+                        }));
+                    }
+                }
 
                 if ui.button("Center Head (0°, 0°)").clicked() {
                     self.state.pan = 0;
                     self.state.tilt = 0;
+                    self.last_sent_pan = 0;
+                    self.last_sent_tilt = 0;
+                    self.dispatch_control(serde_json::json!({
+                        "pan": 0,
+                        "tilt": 0,
+                    }));
                 }
             });
 
@@ -48,22 +147,28 @@ impl eframe::App for CynpaseApp {
                 ui.label("Choreographed Animations");
                 ui.horizontal_wrapped(|ui| {
                     if ui.button("💃 Dance").clicked() {
-                        self.state.add_transcript("GUI", "Triggered Dance animation");
+                        self.state.add_transcript("GUI", "Dispatched Dance animation");
+                        self.dispatch_control(serde_json::json!({ "animation": "dance" }));
                     }
                     if ui.button("👋 Wave").clicked() {
-                        self.state.add_transcript("GUI", "Triggered Wave animation");
+                        self.state.add_transcript("GUI", "Dispatched Wave animation");
+                        self.dispatch_control(serde_json::json!({ "animation": "wave" }));
                     }
                     if ui.button("🙂 Nod").clicked() {
-                        self.state.add_transcript("GUI", "Triggered Nod animation");
+                        self.state.add_transcript("GUI", "Dispatched Nod animation");
+                        self.dispatch_control(serde_json::json!({ "animation": "nod" }));
                     }
                     if ui.button("↔ Shake").clicked() {
-                        self.state.add_transcript("GUI", "Triggered Shake animation");
+                        self.state.add_transcript("GUI", "Dispatched Shake animation");
+                        self.dispatch_control(serde_json::json!({ "animation": "shake" }));
                     }
                     if ui.button("💤 Sleep").clicked() {
-                        self.state.add_transcript("GUI", "Triggered Sleep animation");
+                        self.state.add_transcript("GUI", "Dispatched Sleep animation");
+                        self.dispatch_control(serde_json::json!({ "animation": "sleep" }));
                     }
                     if ui.button("☀️ Wake").clicked() {
-                        self.state.add_transcript("GUI", "Triggered Wake animation");
+                        self.state.add_transcript("GUI", "Dispatched Wake animation");
+                        self.dispatch_control(serde_json::json!({ "animation": "wake" }));
                     }
                 });
             });
@@ -72,7 +177,21 @@ impl eframe::App for CynpaseApp {
             ui.group(|ui| {
                 ui.label("Onboard Neon LED Color");
                 ui.horizontal(|ui| {
-                    ui.color_edit_button_srgb(&mut [self.state.neon_red, self.state.neon_green, self.state.neon_blue]);
+                    let mut rgb = [self.state.neon_red, self.state.neon_green, self.state.neon_blue];
+                    if ui.color_edit_button_srgb(&mut rgb).changed() {
+                        self.state.neon_red = rgb[0];
+                        self.state.neon_green = rgb[1];
+                        self.state.neon_blue = rgb[2];
+                        let current_rgb = (rgb[0], rgb[1], rgb[2]);
+                        if current_rgb != self.last_sent_rgb {
+                            self.last_sent_rgb = current_rgb;
+                            self.dispatch_control(serde_json::json!({
+                                "r": rgb[0],
+                                "g": rgb[1],
+                                "b": rgb[2],
+                            }));
+                        }
+                    }
                     ui.label(format!("RGB({}, {}, {})", self.state.neon_red, self.state.neon_green, self.state.neon_blue));
                 });
             });
@@ -80,6 +199,11 @@ impl eframe::App for CynpaseApp {
             ui.add_space(8.0);
             if ui.button("🚨 EMERGENCY STOP").clicked() {
                 self.state.add_transcript("SAFETY", "Emergency stop triggered");
+                self.dispatch_control(serde_json::json!({
+                    "pan": 0,
+                    "tilt": 0,
+                    "animation": "wake"
+                }));
             }
         });
 

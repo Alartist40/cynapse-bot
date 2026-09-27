@@ -27,13 +27,25 @@ async fn test_ota_endpoint() {
 
     let router = create_router(state);
 
-    let req = Request::builder()
+    // 1. Unauthenticated request must be rejected with 401
+    let unauth_req = Request::builder()
         .uri("/xiaozhi/ota/")
         .method("GET")
         .body(Body::empty())
         .unwrap();
 
-    let response = router.oneshot(req).await.unwrap();
+    let response = router.clone().oneshot(unauth_req).await.unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    // 2. Authenticated request with Bearer token must succeed
+    let auth_req = Request::builder()
+        .uri("/xiaozhi/ota/")
+        .method("GET")
+        .header("authorization", "Bearer test-token-123")
+        .body(Body::empty())
+        .unwrap();
+
+    let response = router.oneshot(auth_req).await.unwrap();
     assert_eq!(response.status(), StatusCode::OK);
 
     let body = response.into_body().collect().await.unwrap().to_bytes();
