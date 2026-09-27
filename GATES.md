@@ -44,3 +44,23 @@
   CHECK: cargo test --test dashboard_test test_web_dashboard_and_monitor -- --nocapture
   EXPECT: test_web_dashboard_and_monitor ... ok
   EVIDENCE: test test_web_dashboard_and_monitor ... ok (0.03s)
+
+- [x] G10: Mazzaroth graph core compiles and persists 4-tier knowledge nodes with SQLite FTS5
+  CHECK: cargo test --test mazzaroth_test test_mazzaroth_core_persistence -- --nocapture
+  EXPECT: test_mazzaroth_core_persistence ... ok
+  EVIDENCE: test test_mazzaroth_core_persistence ... ok (0.01s)
+
+- [x] G11: Mazzaroth cognitive activation & decay calculates memory strength and Hebbian link reinforcement
+  CHECK: cargo test --test mazzaroth_test test_cognitive_decay_and_hebbian -- --nocapture
+  EXPECT: test_cognitive_decay_and_hebbian ... ok
+  EVIDENCE: test test_cognitive_decay_and_hebbian ... ok (0.00s)
+
+- [x] G12: Mazzaroth multi-tier hierarchy migrates working turns to episodic logs and consolidates semantic knowledge
+  CHECK: cargo test --test mazzaroth_test test_hierarchy_consolidation -- --nocapture
+  EXPECT: test_hierarchy_consolidation ... ok
+  EVIDENCE: test test_hierarchy_consolidation ... ok (0.00s)
+
+- [x] G13: Mazzaroth celestial spatial engine computes 3D gravity coordinates and constellation clusters
+  CHECK: cargo test --test mazzaroth_test test_celestial_spatial_layout -- --nocapture
+  EXPECT: test_celestial_spatial_layout ... ok
+  EVIDENCE: test test_celestial_spatial_layout ... ok (0.00s)

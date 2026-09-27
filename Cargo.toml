@@ -22,6 +22,7 @@ uuid = { version = "1.10", features = ["v4"] }
 cynapse-core = { path = "../cynapse-mini/harness/cynapse-core" }
 cynapse-engine = { path = "../cynapse-mini/engine/cynapse-engine" }
 cynapse-memory = { path = "../cynapse-mini/memory/cynapse-memory" }
+rusqlite = { version = "0.32", features = ["bundled"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

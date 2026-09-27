@@ -2,6 +2,16 @@
 
 All notable changes to `cynpase-bot` will be documented in this file.
 
+## [0.2.0] - 2026-09-27
+
+### Added
+- **Mazzaroth Unified Memory Engine (`src/mazzaroth/`):**
+  - **4-Tier Knowledge Taxonomy:** Core (L4), Semantic (L3), Episodic (L2), Working (L1) with `Identity`, `Person`, `Concept`, `Project`, `Procedure`, `Lesson`, `Event`, and `AtomicFact` classifications.
+  - **Cognitive Decay & Hebbian Learning:** Ebbinghaus exponential forgetting curve with strength reinforcement and automatic co-occurrence link association.
+  - **Relational & Semantic FTS5 Store:** High-performance SQLite backing with Porter Unicode full-text search.
+  - **Celestial 3D Spatial Layout:** N-body gravitational clustering mapping memories into planetary constellations for visual rendering.
+  - **Episodic-to-Semantic Consolidation:** Automatic distillation of raw conversation turns into long-term atomic facts.
+
 ## [0.1.0] - 2026-09-27
 
 ### Added
