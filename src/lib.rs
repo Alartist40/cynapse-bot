@@ -1,0 +1,21 @@
+pub mod animation;
+pub mod audio;
+pub mod config;
+pub mod dashboard;
+pub mod mcp;
+pub mod ota;
+pub mod persona;
+pub mod pipeline;
+pub mod protocol;
+pub mod server;
+pub mod session;
+pub mod vision;
+
+pub use animation::{Animation, AnimationLibrary, Keyframe};
+pub use audio::AudioEngine;
+pub use config::HubConfig;
+pub use dashboard::TelemetrySender;
+pub use persona::PersonaManager;
+pub use pipeline::PipelineEngine;
+pub use server::{create_router, AppState};
+pub use vision::VisionManager;

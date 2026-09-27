@@ -1,0 +1,18 @@
+[Unit]
+Description=cynpase-bot Local AI Hub for StackChan (Orange Pi 6 Plus)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=xander
+WorkingDirectory=/home/xander/Documents/portfolio/cynpase-bot
+ExecStart=/home/xander/Documents/portfolio/cynpase-bot/target/release/cynpase-bot --bind-addr 0.0.0.0:8000 --public-ws-url ws://0.0.0.0:8000/xiaozhi/ws --model-name qwen2.5-7b
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+Environment=RUST_LOG=info,cynpase_bot=debug,tower_http=info
+Environment=PORT=8000
+
+[Install]
+WantedBy=multi-user.target
