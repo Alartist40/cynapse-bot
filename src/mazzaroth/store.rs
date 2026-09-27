@@ -197,7 +197,7 @@ impl MazzarothStore {
 
     pub fn search_fts_ids(&self, query: &str, limit: usize) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
-        let safe_query = query.replace('"', "").replace('*', "");
+        let safe_query = query.replace(['"', '*'], "");
         let formatted = format!("\"{}\"*", safe_query);
 
         let mut stmt = conn.prepare(

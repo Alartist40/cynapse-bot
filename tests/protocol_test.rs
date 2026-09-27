@@ -220,7 +220,7 @@ fn test_mcp_wire_envelope_conformance() {
     // 2. Payload must be JSON-RPC 2.0 tools/call object
     assert_eq!(json_val["payload"]["jsonrpc"], "2.0", "mcp_server.cc:358 requires jsonrpc: '2.0'");
     assert_eq!(json_val["payload"]["method"], "tools/call", "mcp_server.cc:362 requires method: 'tools/call'");
-    assert_eq!(json_val["payload"]["id"], 1);
+    assert!(json_val["payload"]["id"].is_number(), "mcp_server.cc:360 requires integer id");
 
     // 3. Params must have name & arguments
     assert_eq!(json_val["payload"]["params"]["name"], "self.robot.set_head_angles");
@@ -231,4 +231,27 @@ fn test_mcp_wire_envelope_conformance() {
     // 4. Verify deserialization back to ServerMessage::Mcp
     let roundtrip: ServerMessage = serde_json::from_str(&serialized).unwrap();
     assert_eq!(roundtrip, msg);
+}
+
+#[test]
+fn test_dynamic_token_and_sequential_mcp_ids() {
+    use cynpase_bot::protocol::ServerMessage;
+
+    // 1. Dynamic auth token generation
+    let cfg1 = HubConfig::default();
+    let cfg2 = HubConfig::default();
+    assert_ne!(cfg1.auth_token, "cynpase-secret-token", "Default token must not be static default string");
+    assert_ne!(cfg1.auth_token, cfg2.auth_token, "Each HubConfig::default() must generate a unique random token");
+    assert!(cfg1.auth_token.len() >= 32, "Auth token must have sufficient entropy (>= 32 hex chars)");
+
+    // 2. Monotonic sequential MCP IDs
+    let msg1 = ServerMessage::mcp("test_tool", json!({}));
+    let msg2 = ServerMessage::mcp("test_tool", json!({}));
+
+    if let (ServerMessage::Mcp { payload: p1 }, ServerMessage::Mcp { payload: p2 }) = (msg1, msg2) {
+        assert!(p2.id > p1.id, "MCP call IDs must be strictly monotonically increasing");
+        assert_eq!(p2.id, p1.id + 1, "MCP call IDs must increment sequentially by 1");
+    } else {
+        panic!("Expected ServerMessage::Mcp variants");
+    }
 }

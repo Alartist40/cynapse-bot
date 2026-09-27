@@ -123,30 +123,25 @@ impl PipelineEngine {
         });
 
         // 2. Check Tier 1 Fast Actions
-        if let Some(fast) = self.try_fast_action(text) {
-            match fast {
-                PipelineTurnResult::FastAction { tool, arguments, reply_text } => {
-                    messages.push(ServerMessage::mcp(tool, arguments));
-                    messages.push(ServerMessage::Tts {
-                        state: "start".to_string(),
-                        text: Some(reply_text.clone()),
-                    });
-                    messages.push(ServerMessage::Tts {
-                        state: "stop".to_string(),
-                        text: None,
-                    });
+        if let Some(PipelineTurnResult::FastAction { tool, arguments, reply_text }) = self.try_fast_action(text) {
+            messages.push(ServerMessage::mcp(tool, arguments));
+            messages.push(ServerMessage::Tts {
+                state: "start".to_string(),
+                text: Some(reply_text.clone()),
+            });
+            messages.push(ServerMessage::Tts {
+                state: "stop".to_string(),
+                text: None,
+            });
 
-                    // Synthesize real 24 kHz Opus audio frames
-                    let audio_frames = self.audio_engine.synthesize(&reply_text).await.unwrap_or_default();
+            // Synthesize real 24 kHz Opus audio frames
+            let audio_frames = self.audio_engine.synthesize(&reply_text).await.unwrap_or_default();
 
-                    return Ok(TurnExecution {
-                        messages,
-                        audio_frames,
-                        spoken_text: reply_text,
-                    });
-                }
-                _ => {}
-            }
+            return Ok(TurnExecution {
+                messages,
+                audio_frames,
+                spoken_text: reply_text,
+            });
         }
 
         // 3. Fallback to Tier 3 LLM (Leafcutter / OpenAI seam)

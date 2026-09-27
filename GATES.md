@@ -125,7 +125,7 @@
   EXPECT: test_mcp_wire_envelope_conformance ... ok
   EVIDENCE: test test_mcp_wire_envelope_conformance ... ok (0.00s)
 
-
-
-
-
+- [x] G26: Dynamic secure authentication token generation & Sequential monotonic MCP JSON-RPC IDs
+  CHECK: cargo test --test protocol_test test_dynamic_token_and_sequential_mcp_ids -- --nocapture
+  EXPECT: test_dynamic_token_and_sequential_mcp_ids ... ok
+  EVIDENCE: test test_dynamic_token_and_sequential_mcp_ids ... ok (0.00s)

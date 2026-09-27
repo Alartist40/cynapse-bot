@@ -61,7 +61,16 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/chat/audio", post(handle_api_chat_audio))
         .route("/api/memory/celestial", get(handle_api_celestial_memory))
         .route("/health", get(|| async { "OK" }))
-        .layer(CorsLayer::permissive())
+        .layer(
+            CorsLayer::new()
+                .allow_methods([axum::http::Method::GET, axum::http::Method::POST, axum::http::Method::OPTIONS])
+                .allow_headers([
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::CONTENT_TYPE,
+                    axum::http::header::ACCEPT,
+                ])
+                .allow_origin(tower_http::cors::Any)
+        )
         .layer(TraceLayer::new_for_http())
         .layer(Extension(state.telemetry_tx.clone()))
         .layer(Extension(state.clone()))

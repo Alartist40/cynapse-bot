@@ -2,6 +2,10 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 
+fn generate_secure_token() -> String {
+    uuid::Uuid::new_v4().to_string().replace('-', "")
+}
+
 #[derive(Parser, Debug, Clone, Serialize, Deserialize)]
 #[command(author, version, about = "cynpase-bot Local AI Hub")]
 pub struct HubConfig {
@@ -11,7 +15,7 @@ pub struct HubConfig {
     #[arg(long, env = "CYNPASE_PUBLIC_WS_URL", default_value = "ws://127.0.0.1:8000/xiaozhi/ws")]
     pub public_ws_url: String,
 
-    #[arg(long, env = "CYNPASE_AUTH_TOKEN", default_value = "cynpase-secret-token")]
+    #[arg(long, env = "CYNPASE_AUTH_TOKEN", default_value_t = generate_secure_token())]
     pub auth_token: String,
 
     #[arg(long, env = "CYNPASE_LEAFCUTTER_URL", default_value = "http://127.0.0.1:8081/v1/chat/completions")]
@@ -26,7 +30,7 @@ impl Default for HubConfig {
         Self {
             bind_addr: "0.0.0.0:8000".parse().unwrap(),
             public_ws_url: "ws://127.0.0.1:8000/xiaozhi/ws".to_string(),
-            auth_token: "cynpase-secret-token".to_string(),
+            auth_token: generate_secure_token(),
             leafcutter_url: "http://127.0.0.1:8081/v1/chat/completions".to_string(),
             model_name: "qwen2.5-7b".to_string(),
         }

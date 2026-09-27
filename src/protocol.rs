@@ -72,8 +72,16 @@ fn default_jsonrpc_version() -> String {
     "2.0".to_string()
 }
 
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static MCP_ID_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+pub fn next_mcp_id() -> u64 {
+    MCP_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
 fn default_mcp_id() -> u64 {
-    1
+    next_mcp_id()
 }
 
 fn default_mcp_method() -> String {
@@ -112,7 +120,7 @@ impl ServerMessage {
         Self::Mcp {
             payload: McpCallPayload {
                 jsonrpc: "2.0".to_string(),
-                id: 1,
+                id: next_mcp_id(),
                 method: "tools/call".to_string(),
                 params: McpCallParams {
                     name: tool.into(),

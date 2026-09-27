@@ -119,15 +119,15 @@ impl eframe::App for CynpaseApp {
                 let pan_res = ui.add(egui::Slider::new(&mut self.state.pan, -90..=90).text("Pan (Yaw)"));
                 let tilt_res = ui.add(egui::Slider::new(&mut self.state.tilt, -30..=30).text("Tilt (Pitch)"));
 
-                if pan_res.changed() || tilt_res.changed() {
-                    if self.state.pan != self.last_sent_pan || self.state.tilt != self.last_sent_tilt {
-                        self.last_sent_pan = self.state.pan;
-                        self.last_sent_tilt = self.state.tilt;
-                        self.dispatch_control(serde_json::json!({
-                            "pan": self.state.pan,
-                            "tilt": self.state.tilt,
-                        }));
-                    }
+                if (pan_res.changed() || tilt_res.changed())
+                    && (self.state.pan != self.last_sent_pan || self.state.tilt != self.last_sent_tilt)
+                {
+                    self.last_sent_pan = self.state.pan;
+                    self.last_sent_tilt = self.state.tilt;
+                    self.dispatch_control(serde_json::json!({
+                        "pan": self.state.pan,
+                        "tilt": self.state.tilt,
+                    }));
                 }
 
                 if ui.button("Center Head (0°, 0°)").clicked() {
