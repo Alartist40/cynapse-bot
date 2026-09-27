@@ -15,8 +15,8 @@ async fn test_pipeline_turn() {
 
     // Test Tier 1 Fast Action: "wave"
     let turn = pipeline.process_text_turn("please wave to me").await.unwrap();
-    let has_wave = turn.messages.iter().any(|m| matches!(m, ServerMessage::Mcp { tool, .. } if tool == "play_animation"));
-    assert!(has_wave, "Wave command must return Mcp animation message immediately");
+    let has_wave = turn.messages.iter().any(|m| matches!(m, ServerMessage::Mcp { tool, .. } if tool == "self.robot.set_head_angles"));
+    assert!(has_wave, "Wave command must return native hal_mcp head angle message immediately");
     assert!(!turn.audio_frames.is_empty(), "Wave turn must generate binary Opus audio frames");
 
     // Test Tier 3 General Turn (Offline fallback handling)

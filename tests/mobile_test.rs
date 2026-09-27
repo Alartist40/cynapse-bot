@@ -244,4 +244,21 @@ async fn test_mobile_chat_and_status() {
     let cel_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(cel_resp["status"], "ok");
     assert!(cel_resp["nodes"].as_array().unwrap().len() >= 4);
+
+    // 4. Audio Chat API (POST /api/chat/audio)
+    let pcm_sample: Vec<i16> = (0..1600).map(|i| ((i as f32 * 0.1).sin() * 5000.0) as i16).collect();
+    let wav_bytes = cynpase_bot::audio::AudioEngine::pcm_to_wav_bytes(&pcm_sample, 16000);
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/chat/audio")
+        .header("Content-Type", "audio/wav")
+        .body(axum::body::Body::from(wav_bytes))
+        .unwrap();
+
+    let res = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(res.status(), StatusCode::OK);
+    let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+    let audio_resp: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(audio_resp["status"], "ok");
+    assert!(audio_resp["response"].is_string());
 }

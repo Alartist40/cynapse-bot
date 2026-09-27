@@ -114,9 +114,10 @@ pub async fn handle_api_robot_control(
                 "name": animation.name,
                 "keyframes_count": animation.keyframes.len()
             }));
+            let (yaw, pitch) = animation.keyframes.first().map(|k| (k.pan, k.tilt)).unwrap_or((0, 0));
             mcp_messages.push(crate::protocol::ServerMessage::Mcp {
-                tool: "play_animation".to_string(),
-                arguments: json!({ "name": anim_name }),
+                tool: "self.robot.set_head_angles".to_string(),
+                arguments: json!({ "yaw": yaw, "pitch": pitch, "speed": 300 }),
             });
         }
     }
@@ -126,6 +127,18 @@ pub async fn handle_api_robot_control(
             "type": "expression",
             "name": expr
         }));
+        let (r, g, b) = match expr.to_lowercase().as_str() {
+            "happy" | "talk_happy" => (0, 150, 100),
+            "curious" => (120, 100, 0),
+            "surprised" => (150, 0, 150),
+            "sleep" => (0, 0, 20),
+            "angry" | "error" => (168, 0, 0),
+            _ => (40, 40, 60),
+        };
+        mcp_messages.push(crate::protocol::ServerMessage::Mcp {
+            tool: "self.robot.set_led_color".to_string(),
+            arguments: json!({ "red": r, "green": g, "blue": b }),
+        });
     }
 
     // Forward to connected robot WebSocket via device_cmd_tx
@@ -168,6 +181,9 @@ pub async fn handle_api_chat_send(
     match state.pipeline.process_text_turn(&payload.message).await {
         Ok(turn) => {
             for reply in &turn.messages {
+                if let crate::protocol::ServerMessage::Mcp { .. } = reply {
+                    let _ = state.device_cmd_tx.send(reply.clone());
+                }
                 let _ = state.telemetry_tx.send(TelemetryEvent {
                     event_type: "mobile_chat_turn".to_string(),
                     payload: serde_json::to_value(reply).unwrap_or_default(),
@@ -177,6 +193,52 @@ pub async fn handle_api_chat_send(
 
             (StatusCode::OK, Json(json!({
                 "status": "ok",
+                "response": turn.spoken_text,
+                "replies_count": turn.messages.len(),
+                "audio_frames_count": turn.audio_frames.len()
+            }))).into_response()
+        }
+        Err(e) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
+pub async fn handle_api_chat_audio(
+    Extension(state): Extension<AppState>,
+    body: axum::body::Bytes,
+) -> Response {
+    if body.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "empty audio body" }))).into_response();
+    }
+
+    let transcript = match state.pipeline.audio_engine.transcribe_wav(&body).await {
+        Ok(t) if !t.is_empty() => t,
+        _ => String::new(),
+    };
+
+    let user_text = if transcript.trim().is_empty() {
+        "Hello".to_string()
+    } else {
+        transcript
+    };
+
+    match state.pipeline.process_text_turn(&user_text).await {
+        Ok(turn) => {
+            for reply in &turn.messages {
+                if let crate::protocol::ServerMessage::Mcp { .. } = reply {
+                    let _ = state.device_cmd_tx.send(reply.clone());
+                }
+                let _ = state.telemetry_tx.send(TelemetryEvent {
+                    event_type: "mobile_audio_turn".to_string(),
+                    payload: serde_json::to_value(reply).unwrap_or_default(),
+                    timestamp_ms: 0,
+                });
+            }
+
+            (StatusCode::OK, Json(json!({
+                "status": "ok",
+                "transcript": user_text,
                 "response": turn.spoken_text,
                 "replies_count": turn.messages.len(),
                 "audio_frames_count": turn.audio_frames.len()
@@ -999,47 +1061,31 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
         }
 
         let isRecording = false;
-        let speechRecognizer = null;
-        let recognizedSpeech = '';
+        let mediaRecorder = null;
+        let audioChunks = [];
 
-        if ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window) {
-            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-            speechRecognizer = new SpeechRec();
-            speechRecognizer.continuous = true;
-            speechRecognizer.interimResults = true;
-            speechRecognizer.lang = 'en-US';
-
-            speechRecognizer.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        recognizedSpeech += event.results[i][0].transcript;
-                    } else {
-                        interim += event.results[i][0].transcript;
-                    }
-                }
-                if (interim) {
-                    document.getElementById('pttLabel').innerText = `"${interim}"`;
-                }
-            };
-
-            speechRecognizer.onerror = (e) => {
-                console.warn('Speech recognition error:', e.error);
-            };
-        }
-
-        function startPtt(e) {
+        async function startPtt(e) {
             e.preventDefault();
             isRecording = true;
-            recognizedSpeech = '';
+            audioChunks = [];
             document.getElementById('pttButton').classList.add('recording');
-            document.getElementById('pttLabel').innerText = 'Listening... (Release to send)';
+            document.getElementById('pttLabel').innerText = 'Recording Voice... (Release to send)';
             haptic();
 
-            if (speechRecognizer) {
-                try {
-                    speechRecognizer.start();
-                } catch(err) {}
+            try {
+                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+                    mediaRecorder.start(100);
+                }
+            } catch (err) {
+                console.warn('Microphone error:', err);
+                document.getElementById('pttLabel').innerText = 'Mic access unavailable';
             }
         }
 
@@ -1048,33 +1094,37 @@ const MOBILE_APP_HTML: &str = r###"<!DOCTYPE html>
             e.preventDefault();
             isRecording = false;
             document.getElementById('pttButton').classList.remove('recording');
-            document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
+            document.getElementById('pttLabel').innerText = 'Processing Speech Offline...';
             haptic();
 
-            if (speechRecognizer) {
-                try {
-                    speechRecognizer.stop();
-                } catch(err) {}
-            }
-
-            // Give recognition a moment to finalize
-            setTimeout(async () => {
-                const textToSend = recognizedSpeech.trim();
-                if (textToSend.length > 0) {
-                    addChatBubble(textToSend, 'user');
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
                     try {
-                        const res = await fetch('/api/chat/send', {
+                        const res = await fetch('/api/chat/audio', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ message: textToSend })
+                            headers: { 'Content-Type': 'audio/wav' },
+                            body: audioBlob
                         });
                         const data = await res.json();
-                        if (data.response) addChatBubble(data.response, 'bot');
+                        if (data.transcript) {
+                            addChatBubble(data.transcript, 'user');
+                        }
+                        if (data.response) {
+                            addChatBubble(data.response, 'bot');
+                        }
                     } catch(err) {
-                        addChatBubble('Error: Hub unreachable', 'bot');
+                        addChatBubble('Error: Hub STT unreachable', 'bot');
                     }
-                }
-            }, 300);
+                    document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
+                };
+                try {
+                    mediaRecorder.stop();
+                    mediaRecorder.stream.getTracks().forEach(track => track.stop());
+                } catch(err) {}
+            } else {
+                document.getElementById('pttLabel').innerText = 'Push & Hold to Speak';
+            }
         }
 
         const celCanvas = document.getElementById('celestialCanvas');

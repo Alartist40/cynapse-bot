@@ -179,6 +179,36 @@ impl AudioEngine {
         wav
     }
 
+    /// Linearly resample mono linear PCM samples from src_rate to dst_rate
+    pub fn resample_pcm_linear(samples: &[i16], src_rate: u32, dst_rate: u32) -> Vec<i16> {
+        if samples.is_empty() || src_rate == dst_rate || src_rate == 0 || dst_rate == 0 {
+            return samples.to_vec();
+        }
+
+        let src_len = samples.len();
+        let dst_len = ((src_len as u64 * dst_rate as u64) / src_rate as u64) as usize;
+        if dst_len == 0 {
+            return Vec::new();
+        }
+
+        let ratio = src_rate as f64 / dst_rate as f64;
+        let mut out = Vec::with_capacity(dst_len);
+
+        for i in 0..dst_len {
+            let src_pos = i as f64 * ratio;
+            let idx0 = src_pos.floor() as usize;
+            let idx1 = (idx0 + 1).min(src_len - 1);
+            let frac = src_pos - idx0 as f64;
+
+            let s0 = samples[idx0] as f64;
+            let s1 = samples[idx1] as f64;
+            let interpolated = s0 + frac * (s1 - s0);
+            out.push(interpolated.clamp(i16::MIN as f64, i16::MAX as f64) as i16);
+        }
+
+        out
+    }
+
     /// Transcribe speech audio (Opus frames) using Whisper
     pub async fn transcribe(&self, frames: &[Vec<u8>]) -> anyhow::Result<String> {
         if frames.is_empty() {
@@ -199,42 +229,82 @@ impl AudioEngine {
         }
 
         let wav_data = Self::pcm_to_wav_bytes(&pcm_16k, 16000);
+        self.transcribe_wav(&wav_data).await
+    }
+
+    /// Transcribe a WAV audio buffer directly using Whisper CLI
+    pub async fn transcribe_wav(&self, wav_data: &[u8]) -> anyhow::Result<String> {
+        if wav_data.is_empty() {
+            return Ok(String::new());
+        }
+
         let temp_wav_path = std::env::temp_dir().join(format!("cynpase_stt_{}.wav", uuid::Uuid::new_v4()));
-        if let Err(e) = tokio::fs::write(&temp_wav_path, &wav_data).await {
+        if let Err(e) = tokio::fs::write(&temp_wav_path, wav_data).await {
             warn!("Failed to write temp WAV file for STT: {}", e);
             return Ok(String::new());
         }
 
-        let result = match Command::new(&self.config.whisper_bin)
-            .arg("--model")
-            .arg(&self.config.whisper_model_path)
-            .arg("-f")
-            .arg(&temp_wav_path)
-            .arg("--no-timestamps")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(child) => match child.wait_with_output().await {
-                Ok(output) => {
-                    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    Ok(text)
+        // Detect candidate binaries: user configured -> whisper-cli -> whisper.cpp -> main -> whisper
+        let candidates = [
+            self.config.whisper_bin.as_str(),
+            "whisper-cli",
+            "whisper.cpp",
+            "main",
+            "whisper",
+        ];
+
+        let mut output_text = String::new();
+        let mut executed = false;
+
+        for bin in &candidates {
+            // First try whisper.cpp flags: -m <model> -f <wav> --no-timestamps
+            if let Ok(child) = Command::new(bin)
+                .arg("-m")
+                .arg(&self.config.whisper_model_path)
+                .arg("-f")
+                .arg(&temp_wav_path)
+                .arg("--no-timestamps")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                if let Ok(output) = child.wait_with_output().await {
+                    if output.status.success() {
+                        output_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        executed = true;
+                        break;
+                    }
                 }
-                Err(e) => {
-                    warn!("Whisper process wait error: {}", e);
-                    Ok(String::new())
-                }
-            },
-            Err(_) => {
-                // If external whisper binary is not in PATH during local test/dev,
-                // return empty string so pipeline knows no transcription occurred rather than hallucinating
-                warn!("Whisper binary not found in PATH");
-                Ok(String::new())
             }
-        };
+
+            // Next try python whisper flags: <wav> --model <model> --output_format txt
+            if let Ok(child) = Command::new(bin)
+                .arg(&temp_wav_path)
+                .arg("--model")
+                .arg(&self.config.whisper_model_path)
+                .arg("--output_format")
+                .arg("txt")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+            {
+                if let Ok(output) = child.wait_with_output().await {
+                    if output.status.success() {
+                        output_text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                        executed = true;
+                        break;
+                    }
+                }
+            }
+        }
 
         let _ = tokio::fs::remove_file(&temp_wav_path).await;
-        result
+
+        if !executed {
+            warn!("No working Whisper binary found in PATH among candidates");
+        }
+
+        Ok(output_text)
     }
 
     /// Synthesize speech text into 24 kHz Opus audio frames using Pocket-TTS or Piper
@@ -301,7 +371,9 @@ impl AudioEngine {
                     let _ = stdin.write_all(text.as_bytes()).await;
                 }
                 if let Ok(output) = child.wait_with_output().await {
-                    pcm_24k_samples = Self::pcm_bytes_to_i16(&output.stdout);
+                    let raw_samples = Self::pcm_bytes_to_i16(&output.stdout);
+                    // Resample Piper 22050 Hz output to 24000 Hz for standard Opus downlink
+                    pcm_24k_samples = Self::resample_pcm_linear(&raw_samples, 22050, 24000);
                 }
             }
         }

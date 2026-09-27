@@ -52,4 +52,9 @@ async fn test_audio_pipeline() {
     let transcript = engine.transcribe(&client_opus).await.unwrap();
     assert!(!transcript.contains("Audio input"), "Transcribe must NOT fabricate fake 'Audio input' string");
     assert!(!transcript.contains("packets"), "Transcribe must NOT fabricate fake 'packets' string");
+
+    // 6. Test linear resampling from Piper 22050 Hz to 24000 Hz
+    let samples_22k: Vec<i16> = (0..2205).map(|i| ((i as f32 * 0.1).sin() * 10000.0) as i16).collect();
+    let resampled_24k = AudioEngine::resample_pcm_linear(&samples_22k, 22050, 24000);
+    assert_eq!(resampled_24k.len(), 2400, "22050 Hz (100ms) resampled to 24000 Hz must have exactly 2400 samples");
 }

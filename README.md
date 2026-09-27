@@ -132,7 +132,7 @@ cynpase-bot/
 ├── data/persona/         # Markdown persona definition files
 ├── deploy/               # Systemd units & launcher scripts
 ├── mobile/               # Standalone mobile wrapper & Android packaging
-├── tests/                # 11 integration test suites (21 verified gates in GATES.md)
+├── tests/                # 11 integration test suites (22 verified gates in GATES.md)
 └── GATES.md              # Quality gates & test verification ledger
 ```
 

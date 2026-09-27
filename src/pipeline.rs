@@ -79,11 +79,23 @@ impl PipelineEngine {
                     json!({ "red": red, "green": green, "blue": blue }),
                     "Setting LED color.".to_string(),
                 ),
-                HardwareAction::PlayAnimation { ref animation } => (
-                    "play_animation".to_string(),
-                    json!({ "name": animation }),
-                    format!("Playing {} animation.", animation),
-                ),
+                HardwareAction::PlayAnimation { ref animation } => {
+                    let (yaw, pitch) = match animation.to_lowercase().as_str() {
+                        "dance" => (25, 15),
+                        "nod" => (0, -20),
+                        "shake" => (-35, 0),
+                        "wave" => (15, 20),
+                        "look_around" => (-50, 10),
+                        "sleep" => (0, -25),
+                        "wake" => (0, 15),
+                        _ => (0, 0),
+                    };
+                    (
+                        "self.robot.set_head_angles".to_string(),
+                        json!({ "yaw": yaw, "pitch": pitch, "speed": 300 }),
+                        format!("Playing {} motion.", animation),
+                    )
+                }
                 _ => (
                     "self.robot.get_head_angles".to_string(),
                     json!({}),

@@ -105,4 +105,10 @@
   EXPECT: test_mobile_control_reaches_connected_robot_socket ... ok
   EVIDENCE: test test_mobile_control_reaches_connected_robot_socket ... ok (0.05s)
 
+- [x] G22: Linear audio resampling (22050 Hz -> 24000 Hz) & Firmware-Conformant MCP mapping (zero unhandled tool names)
+  CHECK: cargo test --test audio_test --test mcp_test -- --nocapture
+  EXPECT: test_audio_pipeline ... ok && test_mcp_action_dispatch ... ok
+  EVIDENCE: test test_audio_pipeline ... ok (0.02s) / test test_mcp_action_dispatch ... ok (0.00s)
+
+
 

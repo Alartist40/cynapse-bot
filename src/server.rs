@@ -1,7 +1,7 @@
 use crate::config::HubConfig;
 use crate::dashboard::{handle_dashboard_html, handle_monitor_ws, TelemetryEvent, TelemetrySender};
 use crate::mobile::{
-    handle_api_celestial_memory, handle_api_chat_send, handle_api_robot_control, handle_api_status,
+    handle_api_celestial_memory, handle_api_chat_audio, handle_api_chat_send, handle_api_robot_control, handle_api_status,
     handle_manifest_json, handle_mobile_app_html, handle_service_worker_js,
 };
 use crate::ota::handle_ota_discovery;
@@ -58,6 +58,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/status", get(handle_api_status))
         .route("/api/robot/control", post(handle_api_robot_control))
         .route("/api/chat/send", post(handle_api_chat_send))
+        .route("/api/chat/audio", post(handle_api_chat_audio))
         .route("/api/memory/celestial", get(handle_api_celestial_memory))
         .route("/health", get(|| async { "OK" }))
         .layer(CorsLayer::permissive())

@@ -145,20 +145,42 @@ impl McpDispatcher {
                 })
             }
             HardwareAction::SetFace { expression } => {
+                let (r, g, b) = match expression.to_lowercase().as_str() {
+                    "happy" | "talk_happy" => (0, 150, 100),
+                    "curious" => (120, 100, 0),
+                    "surprised" => (150, 0, 150),
+                    "sleep" => (0, 0, 20),
+                    "angry" | "error" => (168, 0, 0),
+                    _ => (40, 40, 60),
+                };
                 json!({
                     "type": "mcp",
-                    "tool": "face_display",
+                    "tool": "self.robot.set_led_color",
                     "arguments": {
-                        "expression": expression
+                        "red": r,
+                        "green": g,
+                        "blue": b
                     }
                 })
             }
             HardwareAction::PlayAnimation { animation } => {
+                let (yaw, pitch) = match animation.to_lowercase().as_str() {
+                    "dance" => (25, 15),
+                    "nod" => (0, -20),
+                    "shake" => (-35, 0),
+                    "wave" => (15, 20),
+                    "look_around" => (-50, 10),
+                    "sleep" => (0, -25),
+                    "wake" => (0, 15),
+                    _ => (0, 0),
+                };
                 json!({
                     "type": "mcp",
-                    "tool": "play_animation",
+                    "tool": "self.robot.set_head_angles",
                     "arguments": {
-                        "name": animation
+                        "yaw": yaw,
+                        "pitch": pitch,
+                        "speed": 300
                     }
                 })
             }
@@ -208,8 +230,12 @@ impl McpDispatcher {
             HardwareAction::EmergencyStop => {
                 json!({
                     "type": "mcp",
-                    "tool": "emergency_stop",
-                    "arguments": {}
+                    "tool": "self.robot.set_head_angles",
+                    "arguments": {
+                        "yaw": 0,
+                        "pitch": 0,
+                        "speed": 500
+                    }
                 })
             }
             HardwareAction::Custom { name, args } => {
