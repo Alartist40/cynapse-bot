@@ -51,7 +51,7 @@ class LLMEngine:
         user_text: str,
         history: deque,
     ) -> AsyncGenerator[str, None]:
-        """Stream response chunked into full spoken sentences."""
+        """Stream response chunked into spoken sentences."""
         messages = [{"role": "system", "content": self.system_prompt}]
         for item in history:
             messages.append(item)
@@ -74,8 +74,9 @@ class LLMEngine:
                     continue
                 buffer += token
 
-                # Check if buffer has complete sentence
-                if any(d in buffer for d in delimiters) or len(buffer) >= 80:
+                # 1. Punctuation boundary
+                has_punct = any(d in buffer for d in delimiters)
+                if has_punct:
                     for d in delimiters:
                         if d in buffer:
                             parts = buffer.split(d, 1)
@@ -85,10 +86,18 @@ class LLMEngine:
                                 yield sentence
                             break
 
+                # 2. Length fallback: if buffer >= 80 chars without punctuation, split at last space
+                elif len(buffer) >= 80:
+                    last_space = buffer.rfind(" ")
+                    if last_space != -1 and last_space >= 30:
+                        chunk_text = buffer[:last_space].strip()
+                        buffer = buffer[last_space + 1 :]
+                        if chunk_text:
+                            yield chunk_text
+
             # Yield remaining text
             if buffer.strip():
                 yield buffer.strip()
 
         except asyncio.CancelledError:
-            # Clean interruption
             raise

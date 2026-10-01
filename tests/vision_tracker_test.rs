@@ -1,10 +1,10 @@
-use cynpase_bot::vision::{
+use cynapse_bot::vision::{
     Detection, TrackState, VisionTracker, TILT_MAX_DEG, TILT_MIN_DEG,
 };
 
 #[test]
 fn test_tracker_state_progression_and_ghost_suppression() {
-    let mut tracker = VisionTracker::new();
+    let mut tracker = VisionTracker::new(true);
 
     let det = vec![Detection {
         class: "person".to_string(),
@@ -39,7 +39,7 @@ fn test_tracker_state_progression_and_ghost_suppression() {
 
 #[test]
 fn test_hard_servo_limit_clamping() {
-    let mut tracker = VisionTracker::new();
+    let mut tracker = VisionTracker::new(true);
 
     // Extreme top detection (cy = 0.0) -> target tilt = 5.0 deg
     let extreme_top = vec![Detection {

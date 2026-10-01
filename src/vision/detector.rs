@@ -13,27 +13,41 @@ pub struct Detection {
 pub struct VisionDetector {
     pub model_name: String,
     pub confidence_threshold: f32,
+    pub simulated: bool,
 }
 
 impl VisionDetector {
-    pub fn new(model_name: &str, confidence_threshold: f32) -> Self {
+    pub fn new(model_name: &str, confidence_threshold: f32, simulated: bool) -> Self {
         Self {
             model_name: model_name.to_string(),
             confidence_threshold,
+            simulated,
         }
     }
 
     /// Process a frame buffer (JPEG / raw bytes) and extract bounding box detections.
-    pub fn detect_objects(&self, _frame_bytes: &[u8]) -> Vec<Detection> {
-        // Fallback / simulated detection for testbench / development
-        // (Production RKNN NPU uses librknnrt FFI on RK3588)
-        vec![Detection {
-            class: "person".to_string(),
-            conf: 0.88,
-            cx: 0.5,
-            cy: 0.45,
-            w: 0.35,
-            h: 0.60,
-        }]
+    pub fn detect_objects(&self, frame_bytes: &[u8]) -> Vec<Detection> {
+        if !self.simulated {
+            // In real mode, empty if no hardware RKNN NPU model is actively attached
+            if frame_bytes.is_empty() {
+                return Vec::new();
+            }
+            // Real inference returns empty until RKNN NPU model inference is executed
+            return Vec::new();
+        }
+
+        // Controlled simulated detection when simulated is explicitly true
+        if frame_bytes.is_empty() {
+            Vec::new()
+        } else {
+            vec![Detection {
+                class: "person".to_string(),
+                conf: 0.88,
+                cx: 0.5,
+                cy: 0.45,
+                w: 0.35,
+                h: 0.60,
+            }]
+        }
     }
 }

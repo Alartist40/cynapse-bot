@@ -5,10 +5,11 @@ use std::time::Duration;
 pub struct WhisperClient {
     client: Client,
     pub endpoint_url: String,
+    pub dev_fallbacks: bool,
 }
 
 impl WhisperClient {
-    pub fn new(endpoint_url: &str) -> Self {
+    pub fn new(endpoint_url: &str, dev_fallbacks: bool) -> Self {
         let client = Client::builder()
             .connect_timeout(Duration::from_millis(500))
             .timeout(Duration::from_secs(10))
@@ -17,6 +18,7 @@ impl WhisperClient {
         Self {
             client,
             endpoint_url: endpoint_url.to_string(),
+            dev_fallbacks,
         }
     }
 
@@ -37,10 +39,19 @@ impl WhisperClient {
                 let text = json["text"].as_str().unwrap_or("").trim().to_string();
                 Ok(text)
             }
-            Ok(resp) => Err(format!("Whisper server returned: {}", resp.status())),
+            Ok(resp) => {
+                if self.dev_fallbacks {
+                    Ok("Hello StackChan".to_string())
+                } else {
+                    Err(format!("Whisper server error status: {}", resp.status()))
+                }
+            }
             Err(e) => {
-                tracing::debug!("Whisper server unreachable ({}), returning simulated speech.", e);
-                Ok("Hello StackChan, what do you see?".to_string())
+                if self.dev_fallbacks {
+                    Ok("Hello StackChan".to_string())
+                } else {
+                    Err(format!("Whisper server unreachable at {}: {}", self.endpoint_url, e))
+                }
             }
         }
     }

@@ -2,7 +2,7 @@ use crate::bus::MqttBus;
 use crate::vision::{Detection, GazeCommand, VisionDetector, VisionTracker};
 use crate::voice::VoiceOrchestrator;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
@@ -60,7 +60,10 @@ pub fn create_api_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
         .route("/say", post(say_handler))
-        .route("/api/vision/frame", post(vision_frame_handler))
+        .route(
+            "/api/vision/frame",
+            post(vision_frame_handler).layer(DefaultBodyLimit::max(10 * 1024 * 1024)), // 10MB limit
+        )
         .with_state(state)
 }
 
@@ -70,7 +73,7 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthRespon
         status: "ok".to_string(),
         uptime_secs: uptime,
         services: serde_json::json!({
-            "vision": "ready",
+            "vision": if state.detector.simulated { "simulated" } else { "ready" },
             "whisper": state.voice.whisper.endpoint_url,
             "ollama": state.voice.llm.host,
             "tts": state.voice.tts.server_url,
@@ -83,7 +86,8 @@ async fn stats_handler(State(state): State<Arc<AppState>>) -> Json<StatsResponse
     let uptime = state.start_time.elapsed().as_secs();
     let frames = state.frame_counter.load(Ordering::Relaxed);
     let conversations = state.voice.total_conversations.load(Ordering::Relaxed);
-    let (tracks, _) = state.tracker.lock().await.update(&[]);
+    // Non-mutating read-only peek (does NOT destroy tracks)
+    let tracks = state.tracker.lock().await.peek_tracks();
 
     Json(StatsResponse {
         uptime_secs: uptime,
@@ -108,7 +112,7 @@ async fn say_handler(
         .tts
         .synthesize(&payload.text)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, e))?;
 
     Ok(Json(SayResponse {
         text: payload.text,

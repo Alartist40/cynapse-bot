@@ -1,5 +1,5 @@
-use cynpase_bot::bus::{FaceCommand, FleetTelemetry, HubStatus, MqttBus};
-use cynpase_bot::vision::tracker::GazeCommand;
+use cynapse_bot::bus::{FaceCommand, FleetTelemetry, HubStatus, MqttBus};
+use cynapse_bot::vision::tracker::GazeCommand;
 
 #[test]
 fn test_mqtt_payload_structures() {

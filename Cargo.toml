@@ -1,5 +1,5 @@
 [package]
-name = "cynpase-bot"
+name = "cynapse-bot"
 version = "0.3.0"
 edition = "2021"
 description = "StackChan Local Mind: Offline Robot Perception, Voice & Fleet Hub in Rust"
@@ -25,6 +25,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 clap = { version = "4.5", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
+tower-http = { version = "0.6", features = ["limit"] }
 
 [dev-dependencies]
 tokio = { version = "1.40", features = ["full", "test-util"] }

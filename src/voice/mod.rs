@@ -13,7 +13,7 @@ pub struct VoiceOrchestrator {
     pub whisper: WhisperClient,
     pub llm: OllamaVoiceClient,
     pub tts: PocketTtsClient,
-    last_narration_instant: std::sync::Mutex<Instant>,
+    last_narration_instant: std::sync::Mutex<Option<Instant>>,
     narration_cooldown: Duration,
     pub total_conversations: AtomicU64,
 }
@@ -24,15 +24,25 @@ impl VoiceOrchestrator {
         ollama_host: &str,
         ollama_model: &str,
         system_prompt: &str,
+        temperature: f32,
+        max_tokens: u32,
         tts_url: &str,
         tts_voice: &str,
+        dev_fallbacks: bool,
     ) -> Self {
         Self {
-            whisper: WhisperClient::new(whisper_url),
-            llm: OllamaVoiceClient::new(ollama_host, ollama_model, system_prompt),
-            tts: PocketTtsClient::new(tts_url, tts_voice),
-            last_narration_instant: std::sync::Mutex::new(Instant::now() - Duration::from_secs(60)),
-            narration_cooldown: Duration::from_secs(30), // FR-V4 rate-limit: 30s
+            whisper: WhisperClient::new(whisper_url, dev_fallbacks),
+            llm: OllamaVoiceClient::new(
+                ollama_host,
+                ollama_model,
+                system_prompt,
+                temperature,
+                max_tokens,
+                dev_fallbacks,
+            ),
+            tts: PocketTtsClient::new(tts_url, tts_voice, dev_fallbacks),
+            last_narration_instant: std::sync::Mutex::new(None),
+            narration_cooldown: Duration::from_secs(30), // FR-V4: 30s rate limit
             total_conversations: AtomicU64::new(0),
         }
     }
@@ -62,13 +72,15 @@ impl VoiceOrchestrator {
     ) -> Option<(String, Vec<u8>)> {
         {
             let mut last = self.last_narration_instant.lock().unwrap();
-            if last.elapsed() < self.narration_cooldown {
-                return None;
+            if let Some(prev) = *last {
+                if prev.elapsed() < self.narration_cooldown {
+                    return None;
+                }
             }
-            *last = Instant::now();
+            *last = Some(Instant::now());
         }
 
-        let prompt = format!("Say one short, witty observation about this: {}", event_description);
+        let prompt = format!("Say one short observation about: {}", event_description);
         if let Ok(reply) = self.llm.generate_reply(&prompt, None).await {
             if let Ok(audio) = self.tts.synthesize(&reply).await {
                 return Some((reply, audio));

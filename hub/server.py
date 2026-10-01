@@ -85,9 +85,15 @@ class LocalBrainSession:
         await self.ws.send(text)
 
     async def send_audio_frames(self, frames: list[bytes]):
-        for frame in frames:
+        """Pace audio delivery to prevent ESP32 client buffer overruns."""
+        for idx, frame in enumerate(frames):
             await self.ws.send(frame)
-            await asyncio.sleep(0.005)
+            if idx < 3:
+                # Fast burst for warm-up
+                await asyncio.sleep(0.005)
+            else:
+                # Real-time pacing (55ms per 60ms frame)
+                await asyncio.sleep(0.055)
 
     async def cancel_active_turn(self):
         """Barge-in interruption: cancel pending LLM and TTS tasks immediately."""
@@ -185,9 +191,9 @@ class LocalBrainSession:
         if not pcm_data or self.stt is None or self.llm is None or self.tts is None:
             return
 
-        # 1. STT Transcription
+        # 1. Non-blocking STT transcription via asyncio.to_thread
         t0 = time.time()
-        transcript = self.stt.transcribe_pcm(pcm_data)
+        transcript = await asyncio.to_thread(self.stt.transcribe_pcm, pcm_data)
         stt_latency = (time.time() - t0) * 1000.0
         logger.info(f"STT Transcript ({stt_latency:.1f}ms): {transcript}")
 
@@ -238,10 +244,12 @@ class LocalBrainHub:
         self.config_path = config_path
         self.config = self._load_config(config_path)
 
-        self.mode = mode_override or self.config.get("server", {}).get("mode", "full")
-        self.host = self.config.get("server", {}).get("host", "0.0.0.0")
-        self.port = self.config.get("server", {}).get("port", 8100)
-        self.endpoint_path = self.config.get("server", {}).get("endpoint_path", "/xiaozhi/v1/")
+        vh_cfg = self.config.get("voice_hub", {})
+        self.mode = mode_override or vh_cfg.get("mode", "full")
+        self.host = vh_cfg.get("host", "0.0.0.0")
+        self.port = vh_cfg.get("port", 8100)
+        self.endpoint_path = vh_cfg.get("endpoint_path", "/xiaozhi/v1/")
+        self.dev_fallbacks = vh_cfg.get("dev_fallbacks", False)
 
         self.docs_dir = Path("docs")
         self.docs_dir.mkdir(parents=True, exist_ok=True)
@@ -256,8 +264,8 @@ class LocalBrainHub:
 
             self.stt = STTEngine(
                 model_size=stt_cfg.get("model_size", "small"),
-                device=stt_cfg.get("device", "auto"),
-                compute_type=stt_cfg.get("compute_type", "int8"),
+                device="auto",
+                compute_type="int8",
                 language=stt_cfg.get("language", "en"),
             )
             self.llm = LLMEngine(
@@ -270,6 +278,7 @@ class LocalBrainHub:
                 server_url=tts_cfg.get("url", "http://127.0.0.1:8000"),
                 voice=tts_cfg.get("voice", "alba"),
                 sample_rate=tts_cfg.get("sample_rate", 16000),
+                dev_fallbacks=self.dev_fallbacks,
             )
         else:
             self.stt = None
@@ -313,13 +322,13 @@ class LocalBrainHub:
             await session.cancel_active_turn()
 
     async def start(self):
-        logger.info(f"Starting LocalBrain Hub on ws://{self.host}:{self.port}{self.endpoint_path} (mode={self.mode})")
+        logger.info(f"Starting LocalBrain Voice Hub on ws://{self.host}:{self.port}{self.endpoint_path} (mode={self.mode})")
         async with websockets.serve(self.handle_connection, self.host, self.port):
             await asyncio.Future()  # run forever
 
 
 def main():
-    parser = argparse.ArgumentParser(description="LocalBrain Hub Server")
+    parser = argparse.ArgumentParser(description="LocalBrain Voice Hub Server")
     parser.add_argument("--config", default="hub/config.yaml", help="Path to config.yaml")
     parser.add_argument("--host", default=None, help="Host to bind to")
     parser.add_argument("--port", type=int, default=None, help="Port to bind to")

@@ -13,3 +13,4 @@ __pycache__/
 models/
 *.onnx
 *.gguf
+docs/*.jsonl

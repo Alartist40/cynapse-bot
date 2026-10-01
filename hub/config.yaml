@@ -1,13 +1,28 @@
-server:
+# Unified Local Mind Configuration
+
+voice_hub:
   host: "0.0.0.0"
   port: 8100
   endpoint_path: "/xiaozhi/v1/"
   mode: "full" # "echo" or "full"
+  dev_fallbacks: false # When false, failed service calls return errors rather than fabricated data
+
+vision_orchestrator:
+  host: "0.0.0.0"
+  port: 8088
+  simulated_vision: false # When false, returns empty detections unless real frames are processed
+  confidence_threshold: 0.5
+  mirror_pan: true # Camera mirrored coordinate mapping
+
+mqtt:
+  host: "127.0.0.1"
+  port: 1883
+  client_id: "localmind-orchestrator"
+  reconnect_interval_sec: 5
 
 stt:
-  model_size: "small" # "tiny", "base", "small", "medium"
-  device: "auto" # "cpu" or "cuda"
-  compute_type: "int8"
+  url: "http://127.0.0.1:8080/inference"
+  model_size: "small"
   language: "en"
 
 llm:
@@ -15,7 +30,7 @@ llm:
   model: "qwen2.5:3b-instruct"
   system_prompt_path: "hub/persona/system.md"
   temperature: 0.7
-  max_tokens: 150
+  max_tokens: 100
 
 tts:
   url: "http://127.0.0.1:8000"

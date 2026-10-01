@@ -1,4 +1,4 @@
-use cynpase_bot::audio::{
+use cynapse_bot::audio::{
     pcm16_to_wav_bytes, resample_24k_to_16k, wav_bytes_to_pcm16, OpusCodec, SAMPLES_PER_FRAME,
 };
 

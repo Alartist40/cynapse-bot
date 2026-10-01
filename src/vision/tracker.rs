@@ -45,22 +45,33 @@ pub struct VisionTracker {
     tracks: HashMap<u32, Track>,
     current_pan: f32,
     current_tilt: f32,
+    pub mirror_pan: bool,
 }
 
 impl Default for VisionTracker {
     fn default() -> Self {
-        Self::new()
+        Self::new(true)
     }
 }
 
 impl VisionTracker {
-    pub fn new() -> Self {
+    pub fn new(mirror_pan: bool) -> Self {
         Self {
             next_id: 1,
             tracks: HashMap::new(),
             current_pan: 90.0,
             current_tilt: 45.0, // center between 5 and 85
+            mirror_pan,
         }
+    }
+
+    /// Non-mutating read-only view of active tracks (does NOT increment missing frames).
+    pub fn peek_tracks(&self) -> Vec<Track> {
+        self.tracks
+            .values()
+            .filter(|t| t.state != TrackState::Lost)
+            .cloned()
+            .collect()
     }
 
     /// Update tracker with detections from the current frame.
@@ -135,45 +146,65 @@ impl VisionTracker {
         // Cleanup lost tracks
         self.tracks.retain(|_, t| t.state != TrackState::Lost);
 
-        // Compute gaze target if a stable person is found
+        // Compute gaze target for deterministic primary target
         let gaze = self.compute_gaze_for_primary_target();
 
-        (self.tracks.values().cloned().collect(), gaze)
+        (self.peek_tracks(), gaze)
     }
 
+    /// Select primary target deterministically by highest confidence and area
     fn compute_gaze_for_primary_target(&mut self) -> Option<GazeCommand> {
-        let stable_person = self
+        let mut stable_people: Vec<&Track> = self
             .tracks
             .values()
-            .find(|t| t.class == "person" && t.state == TrackState::Stable);
+            .filter(|t| t.class == "person" && t.state == TrackState::Stable)
+            .collect();
 
-        if let Some(target) = stable_person {
-            // Target cx in [0, 1] -> Pan angle [180, 0] (mirrored camera view)
-            let target_pan = (1.0 - target.cx) * 180.0;
-            // Target cy in [0, 1] -> Tilt angle [5, 85]
-            let target_tilt = target.cy * (TILT_MAX_DEG - TILT_MIN_DEG) + TILT_MIN_DEG;
-
-            // Apply hard clamps (defense in depth!)
-            let clamped_pan = target_pan.clamp(PAN_MIN_DEG, PAN_MAX_DEG);
-            let clamped_tilt = target_tilt.clamp(TILT_MIN_DEG, TILT_MAX_DEG);
-
-            // Smooth motion
-            self.current_pan = self.current_pan * 0.8 + clamped_pan * 0.2;
-            self.current_tilt = self.current_tilt * 0.8 + clamped_tilt * 0.2;
-
-            // Normalized representation
-            let norm_pan = (self.current_pan - 90.0) / 90.0; // -1.0 to 1.0
-            let norm_tilt = (self.current_tilt - TILT_MIN_DEG) / (TILT_MAX_DEG - TILT_MIN_DEG); // 0.0 to 1.0
-
-            Some(GazeCommand {
-                pan: norm_pan,
-                tilt: norm_tilt,
-                pan_angle: self.current_pan,
-                tilt_angle: self.current_tilt.clamp(TILT_MIN_DEG, TILT_MAX_DEG),
-                speed: 0.5,
-            })
-        } else {
-            None
+        if stable_people.is_empty() {
+            return None;
         }
+
+        // Sort deterministically: highest confidence first, then largest bounding box area
+        stable_people.sort_by(|a, b| {
+            b.conf
+                .partial_cmp(&a.conf)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let area_a = a.w * a.h;
+                    let area_b = b.w * b.h;
+                    area_b.partial_cmp(&area_a).unwrap_or(std::cmp::Ordering::Equal)
+                })
+        });
+
+        let target = stable_people[0];
+
+        // Map pan coordinate with configurable mirroring
+        let target_pan = if self.mirror_pan {
+            (1.0 - target.cx) * 180.0
+        } else {
+            target.cx * 180.0
+        };
+
+        // Map tilt coordinate to [5.0, 85.0]
+        let target_tilt = target.cy * (TILT_MAX_DEG - TILT_MIN_DEG) + TILT_MIN_DEG;
+
+        // Apply strict hardware clamps
+        let clamped_pan = target_pan.clamp(PAN_MIN_DEG, PAN_MAX_DEG);
+        let clamped_tilt = target_tilt.clamp(TILT_MIN_DEG, TILT_MAX_DEG);
+
+        // Exponential smoothing
+        self.current_pan = self.current_pan * 0.8 + clamped_pan * 0.2;
+        self.current_tilt = self.current_tilt * 0.8 + clamped_tilt * 0.2;
+
+        let norm_pan = (self.current_pan - 90.0) / 90.0; // -1.0 to 1.0
+        let norm_tilt = (self.current_tilt - TILT_MIN_DEG) / (TILT_MAX_DEG - TILT_MIN_DEG); // 0.0 to 1.0
+
+        Some(GazeCommand {
+            pan: norm_pan,
+            tilt: norm_tilt,
+            pan_angle: self.current_pan,
+            tilt_angle: self.current_tilt.clamp(TILT_MIN_DEG, TILT_MAX_DEG),
+            speed: 0.5,
+        })
     }
 }

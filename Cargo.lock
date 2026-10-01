@@ -345,7 +345,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cynpase-bot"
+name = "cynapse-bot"
 version = "0.3.0"
 dependencies = [
  "axum",
@@ -363,6 +363,7 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tower",
+ "tower-http",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -1881,6 +1882,7 @@ dependencies = [
  "futures-util",
  "http",
  "http-body",
+ "http-body-util",
  "pin-project-lite",
  "tower",
  "tower-layer",

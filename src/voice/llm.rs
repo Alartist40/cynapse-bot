@@ -8,10 +8,20 @@ pub struct OllamaVoiceClient {
     pub host: String,
     pub model: String,
     pub system_prompt: String,
+    pub temperature: f32,
+    pub max_tokens: u32,
+    pub dev_fallbacks: bool,
 }
 
 impl OllamaVoiceClient {
-    pub fn new(host: &str, model: &str, system_prompt: &str) -> Self {
+    pub fn new(
+        host: &str,
+        model: &str,
+        system_prompt: &str,
+        temperature: f32,
+        max_tokens: u32,
+        dev_fallbacks: bool,
+    ) -> Self {
         let client = Client::builder()
             .connect_timeout(Duration::from_millis(500))
             .timeout(Duration::from_secs(20))
@@ -22,6 +32,9 @@ impl OllamaVoiceClient {
             host: host.to_string(),
             model: model.to_string(),
             system_prompt: system_prompt.to_string(),
+            temperature,
+            max_tokens,
+            dev_fallbacks,
         }
     }
 
@@ -52,8 +65,8 @@ impl OllamaVoiceClient {
             "messages": messages,
             "stream": false,
             "options": {
-                "temperature": 0.7,
-                "num_predict": 100
+                "temperature": self.temperature,
+                "num_predict": self.max_tokens
             }
         });
 
@@ -64,12 +77,18 @@ impl OllamaVoiceClient {
                 Ok(content)
             }
             Ok(resp) => {
-                tracing::debug!("Ollama returned status {}, using fallback.", resp.status());
-                Ok(format!("I see you! {}", visual_context.unwrap_or("Everything looks clear.")))
+                if self.dev_fallbacks {
+                    Ok(format!("I see you! {}", visual_context.unwrap_or("Everything looks clear.")))
+                } else {
+                    Err(format!("Ollama server error status: {}", resp.status()))
+                }
             }
             Err(e) => {
-                tracing::debug!("Ollama unreachable ({}), using fallback answer.", e);
-                Ok(format!("I see you! {}", visual_context.unwrap_or("Everything looks clear.")))
+                if self.dev_fallbacks {
+                    Ok(format!("I see you! {}", visual_context.unwrap_or("Everything looks clear.")))
+                } else {
+                    Err(format!("Ollama server unreachable at {}: {}", self.host, e))
+                }
             }
         }
     }

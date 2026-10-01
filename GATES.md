@@ -24,3 +24,9 @@
   CHECK: cargo test --test orchestrator_api_test -- --nocapture
   EXPECT: ORCHESTRATOR_API_PASS
   EVIDENCE: ORCHESTRATOR_API_PASS (Verified 2026-10-01)
+
+- [x] G6: Python XiaoZhi Voice Hub streaming audio, chunking, and TTS verified
+  CHECK: uv run pytest tests/test_hub.py -v
+  EXPECT: 4 passed
+  EVIDENCE: 4 passed (Verified 2026-10-01)
+

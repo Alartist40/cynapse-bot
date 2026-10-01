@@ -6,10 +6,11 @@ pub struct PocketTtsClient {
     client: Client,
     pub server_url: String,
     pub voice: String,
+    pub dev_fallbacks: bool,
 }
 
 impl PocketTtsClient {
-    pub fn new(server_url: &str, voice: &str) -> Self {
+    pub fn new(server_url: &str, voice: &str, dev_fallbacks: bool) -> Self {
         let client = Client::builder()
             .connect_timeout(Duration::from_millis(500))
             .timeout(Duration::from_secs(15))
@@ -19,6 +20,7 @@ impl PocketTtsClient {
             client,
             server_url: server_url.to_string(),
             voice: voice.to_string(),
+            dev_fallbacks,
         }
     }
 
@@ -26,16 +28,26 @@ impl PocketTtsClient {
         let endpoint = format!("{}/tts", self.server_url.trim_end_matches('/'));
         let params = [("text", text), ("voice_url", &self.voice)];
 
-        if let Ok(resp) = self.client.post(&endpoint).form(&params).send().await {
-            if resp.status().is_success() {
-                if let Ok(bytes) = resp.bytes().await {
-                    return Ok(bytes.to_vec());
+        match self.client.post(&endpoint).form(&params).send().await {
+            Ok(resp) if resp.status().is_success() => {
+                let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+                Ok(bytes.to_vec())
+            }
+            Ok(resp) => {
+                if self.dev_fallbacks {
+                    Self::generate_fallback_wav(text)
+                } else {
+                    Err(format!("Pocket-TTS server error status: {}", resp.status()))
+                }
+            }
+            Err(e) => {
+                if self.dev_fallbacks {
+                    Self::generate_fallback_wav(text)
+                } else {
+                    Err(format!("Pocket-TTS server unreachable at {}: {}", self.server_url, e))
                 }
             }
         }
-
-        // Return synthetic WAV bytes fallback for test environments
-        Self::generate_fallback_wav(text)
     }
 
     fn generate_fallback_wav(text: &str) -> Result<Vec<u8>, String> {

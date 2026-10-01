@@ -4,7 +4,9 @@ use std::path::Path;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     #[serde(default)]
-    pub server: ServerConfig,
+    pub vision_orchestrator: VisionOrchestratorConfig,
+    #[serde(default)]
+    pub mqtt: MqttConfig,
     #[serde(default)]
     pub stt: SttConfig,
     #[serde(default)]
@@ -16,37 +18,79 @@ pub struct AppConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerConfig {
+pub struct VisionOrchestratorConfig {
     #[serde(default = "default_host")]
     pub host: String,
     #[serde(default = "default_port")]
     pub port: u16,
-    #[serde(default = "default_endpoint")]
-    pub endpoint_path: String,
-    #[serde(default = "default_mode")]
-    pub mode: String, // "echo" or "full"
+    #[serde(default = "default_false")]
+    pub simulated_vision: bool,
+    #[serde(default = "default_conf")]
+    pub confidence_threshold: f32,
+    #[serde(default = "default_true")]
+    pub mirror_pan: bool,
 }
 
 fn default_host() -> String {
     "0.0.0.0".to_string()
 }
 fn default_port() -> u16 {
-    8100
+    8088
 }
-fn default_endpoint() -> String {
-    "/xiaozhi/v1/".to_string()
+fn default_false() -> bool {
+    false
 }
-fn default_mode() -> String {
-    "full".to_string()
+fn default_true() -> bool {
+    true
+}
+fn default_conf() -> f32 {
+    0.5
 }
 
-impl Default for ServerConfig {
+impl Default for VisionOrchestratorConfig {
     fn default() -> Self {
         Self {
             host: default_host(),
             port: default_port(),
-            endpoint_path: default_endpoint(),
-            mode: default_mode(),
+            simulated_vision: default_false(),
+            confidence_threshold: default_conf(),
+            mirror_pan: default_true(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MqttConfig {
+    #[serde(default = "default_mqtt_host")]
+    pub host: String,
+    #[serde(default = "default_mqtt_port")]
+    pub port: u16,
+    #[serde(default = "default_client_id")]
+    pub client_id: String,
+    #[serde(default = "default_reconnect_interval")]
+    pub reconnect_interval_sec: u64,
+}
+
+fn default_mqtt_host() -> String {
+    "127.0.0.1".to_string()
+}
+fn default_mqtt_port() -> u16 {
+    1883
+}
+fn default_client_id() -> String {
+    "localmind-orchestrator".to_string()
+}
+fn default_reconnect_interval() -> u64 {
+    5
+}
+
+impl Default for MqttConfig {
+    fn default() -> Self {
+        Self {
+            host: default_mqtt_host(),
+            port: default_mqtt_port(),
+            client_id: default_client_id(),
+            reconnect_interval_sec: default_reconnect_interval(),
         }
     }
 }
@@ -62,7 +106,7 @@ pub struct SttConfig {
 }
 
 fn default_stt_url() -> String {
-    "http://127.0.0.1:8200/transcribe".to_string()
+    "http://127.0.0.1:8080/inference".to_string()
 }
 fn default_stt_model() -> String {
     "small".to_string()
@@ -108,7 +152,7 @@ fn default_temperature() -> f32 {
     0.7
 }
 fn default_max_tokens() -> u32 {
-    150
+    100
 }
 
 impl Default for LlmConfig {
@@ -192,7 +236,8 @@ impl Default for AudioConfig {
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
-            server: ServerConfig::default(),
+            vision_orchestrator: VisionOrchestratorConfig::default(),
+            mqtt: MqttConfig::default(),
             stt: SttConfig::default(),
             llm: LlmConfig::default(),
             tts: TtsConfig::default(),

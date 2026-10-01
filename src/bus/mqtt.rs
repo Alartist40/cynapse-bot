@@ -1,6 +1,6 @@
 use crate::vision::tracker::GazeCommand;
 use crate::vision::Detection;
-use rumqttc::{AsyncClient, MqttOptions, QoS};
+use rumqttc::{AsyncClient, Event, Incoming, MqttOptions, QoS};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -29,6 +29,7 @@ pub struct HubStatus {
     pub services: serde_json::Value,
 }
 
+#[derive(Clone)]
 pub struct MqttBus {
     client: AsyncClient,
     pub host: String,
@@ -39,6 +40,7 @@ impl MqttBus {
     pub fn new(host: &str, port: u16, client_id: &str) -> (Self, rumqttc::EventLoop) {
         let mut mqttoptions = MqttOptions::new(client_id, host, port);
         mqttoptions.set_keep_alive(Duration::from_secs(10));
+        mqttoptions.set_clean_session(true);
 
         let (client, eventloop) = AsyncClient::new(mqttoptions, 50);
         (
@@ -49,6 +51,28 @@ impl MqttBus {
             },
             eventloop,
         )
+    }
+
+    pub async fn run_event_loop(mut eventloop: rumqttc::EventLoop) {
+        loop {
+            match eventloop.poll().await {
+                Ok(notification) => match notification {
+                    Event::Incoming(Incoming::Publish(publish)) => {
+                        let topic = publish.topic;
+                        let payload = String::from_utf8_lossy(&publish.payload);
+                        tracing::info!("MQTT received [{}] -> {}", topic, payload);
+                    }
+                    Event::Incoming(Incoming::ConnAck(_)) => {
+                        tracing::info!("MQTT broker connected successfully.");
+                    }
+                    _ => {}
+                },
+                Err(e) => {
+                    tracing::warn!("MQTT connection error: {}. Reconnecting in 3s...", e);
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                }
+            }
+        }
     }
 
     pub async fn publish_gaze(&self, gaze: &GazeCommand) -> Result<(), String> {
