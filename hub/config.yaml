@@ -1,0 +1,30 @@
+server:
+  host: "0.0.0.0"
+  port: 8100
+  endpoint_path: "/xiaozhi/v1/"
+  mode: "full" # "echo" or "full"
+
+stt:
+  model_size: "small" # "tiny", "base", "small", "medium"
+  device: "auto" # "cpu" or "cuda"
+  compute_type: "int8"
+  language: "en"
+
+llm:
+  host: "http://127.0.0.1:11434"
+  model: "qwen2.5:3b-instruct"
+  system_prompt_path: "hub/persona/system.md"
+  temperature: 0.7
+  max_tokens: 150
+
+tts:
+  url: "http://127.0.0.1:8000"
+  voice: "alba"
+  sample_rate: 16000
+  frame_duration_ms: 60
+
+audio:
+  sample_rate: 16000
+  channels: 1
+  frame_duration_ms: 60
+  frame_size: 960 # 16000 * 0.060

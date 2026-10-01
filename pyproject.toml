@@ -1,0 +1,27 @@
+[project]
+name = "stackchan-localbrain"
+version = "0.1.0"
+description = "LocalBrain Hub: Fully offline AI stack speaking XiaoZhi protocol for StackChan"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=13.0",
+    "numpy>=1.26.0",
+    "soundfile>=0.12.0",
+    "scipy>=1.11.0",
+    "faster-whisper>=1.0.0",
+    "ollama>=0.3.0",
+    "httpx>=0.27.0",
+    "pyyaml>=6.0",
+    "av>=12.0.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "opuslib>=3.0.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hub"]

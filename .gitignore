@@ -1,4 +1,8 @@
 /target
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
 **/*.rs.bk
 *.log
 *.db
@@ -9,4 +13,3 @@
 models/
 *.onnx
 *.gguf
-

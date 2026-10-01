@@ -1,38 +1,213 @@
-use clap::Parser;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use std::path::Path;
 
-fn generate_secure_token() -> String {
-    uuid::Uuid::new_v4().to_string().replace('-', "")
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppConfig {
+    #[serde(default)]
+    pub server: ServerConfig,
+    #[serde(default)]
+    pub stt: SttConfig,
+    #[serde(default)]
+    pub llm: LlmConfig,
+    #[serde(default)]
+    pub tts: TtsConfig,
+    #[serde(default)]
+    pub audio: AudioConfig,
 }
 
-#[derive(Parser, Debug, Clone, Serialize, Deserialize)]
-#[command(author, version, about = "cynpase-bot Local AI Hub")]
-pub struct HubConfig {
-    #[arg(long, default_value = "0.0.0.0:8000")]
-    pub bind_addr: SocketAddr,
-
-    #[arg(long, env = "CYNPASE_PUBLIC_WS_URL", default_value = "ws://127.0.0.1:8000/xiaozhi/ws")]
-    pub public_ws_url: String,
-
-    #[arg(long, env = "CYNPASE_AUTH_TOKEN", default_value_t = generate_secure_token())]
-    pub auth_token: String,
-
-    #[arg(long, env = "CYNPASE_LEAFCUTTER_URL", default_value = "http://127.0.0.1:8081/v1/chat/completions")]
-    pub leafcutter_url: String,
-
-    #[arg(long, env = "CYNPASE_MODEL_NAME", default_value = "qwen2.5-7b")]
-    pub model_name: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    #[serde(default = "default_host")]
+    pub host: String,
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default = "default_endpoint")]
+    pub endpoint_path: String,
+    #[serde(default = "default_mode")]
+    pub mode: String, // "echo" or "full"
 }
 
-impl Default for HubConfig {
+fn default_host() -> String {
+    "0.0.0.0".to_string()
+}
+fn default_port() -> u16 {
+    8100
+}
+fn default_endpoint() -> String {
+    "/xiaozhi/v1/".to_string()
+}
+fn default_mode() -> String {
+    "full".to_string()
+}
+
+impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            bind_addr: "0.0.0.0:8000".parse().unwrap(),
-            public_ws_url: "ws://127.0.0.1:8000/xiaozhi/ws".to_string(),
-            auth_token: generate_secure_token(),
-            leafcutter_url: "http://127.0.0.1:8081/v1/chat/completions".to_string(),
-            model_name: "qwen2.5-7b".to_string(),
+            host: default_host(),
+            port: default_port(),
+            endpoint_path: default_endpoint(),
+            mode: default_mode(),
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SttConfig {
+    #[serde(default = "default_stt_url")]
+    pub url: String,
+    #[serde(default = "default_stt_model")]
+    pub model_size: String,
+    #[serde(default = "default_language")]
+    pub language: String,
+}
+
+fn default_stt_url() -> String {
+    "http://127.0.0.1:8200/transcribe".to_string()
+}
+fn default_stt_model() -> String {
+    "small".to_string()
+}
+fn default_language() -> String {
+    "en".to_string()
+}
+
+impl Default for SttConfig {
+    fn default() -> Self {
+        Self {
+            url: default_stt_url(),
+            model_size: default_stt_model(),
+            language: default_language(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmConfig {
+    #[serde(default = "default_llm_host")]
+    pub host: String,
+    #[serde(default = "default_llm_model")]
+    pub model: String,
+    #[serde(default = "default_system_prompt_path")]
+    pub system_prompt_path: String,
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: u32,
+}
+
+fn default_llm_host() -> String {
+    "http://127.0.0.1:11434".to_string()
+}
+fn default_llm_model() -> String {
+    "qwen2.5:3b-instruct".to_string()
+}
+fn default_system_prompt_path() -> String {
+    "hub/persona/system.md".to_string()
+}
+fn default_temperature() -> f32 {
+    0.7
+}
+fn default_max_tokens() -> u32 {
+    150
+}
+
+impl Default for LlmConfig {
+    fn default() -> Self {
+        Self {
+            host: default_llm_host(),
+            model: default_llm_model(),
+            system_prompt_path: default_system_prompt_path(),
+            temperature: default_temperature(),
+            max_tokens: default_max_tokens(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TtsConfig {
+    #[serde(default = "default_tts_url")]
+    pub url: String,
+    #[serde(default = "default_tts_voice")]
+    pub voice: String,
+    #[serde(default = "default_sample_rate")]
+    pub sample_rate: u32,
+    #[serde(default = "default_frame_duration")]
+    pub frame_duration_ms: u32,
+}
+
+fn default_tts_url() -> String {
+    "http://127.0.0.1:8000".to_string()
+}
+fn default_tts_voice() -> String {
+    "alba".to_string()
+}
+fn default_sample_rate() -> u32 {
+    16000
+}
+fn default_frame_duration() -> u32 {
+    60
+}
+
+impl Default for TtsConfig {
+    fn default() -> Self {
+        Self {
+            url: default_tts_url(),
+            voice: default_tts_voice(),
+            sample_rate: default_sample_rate(),
+            frame_duration_ms: default_frame_duration(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AudioConfig {
+    #[serde(default = "default_sample_rate")]
+    pub sample_rate: u32,
+    #[serde(default = "default_channels")]
+    pub channels: u16,
+    #[serde(default = "default_frame_duration")]
+    pub frame_duration_ms: u32,
+    #[serde(default = "default_frame_size")]
+    pub frame_size: usize,
+}
+
+fn default_channels() -> u16 {
+    1
+}
+fn default_frame_size() -> usize {
+    960
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            sample_rate: default_sample_rate(),
+            channels: default_channels(),
+            frame_duration_ms: default_frame_duration(),
+            frame_size: default_frame_size(),
+        }
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig::default(),
+            stt: SttConfig::default(),
+            llm: LlmConfig::default(),
+            tts: TtsConfig::default(),
+            audio: AudioConfig::default(),
+        }
+    }
+}
+
+impl AppConfig {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Self {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(config) = serde_yaml::from_str(&content) {
+                return config;
+            }
+        }
+        Self::default()
     }
 }

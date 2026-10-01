@@ -1,37 +1,32 @@
 [package]
 name = "cynpase-bot"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
-description = "Local-first AI hub for StackChan robot speaking Xiaozhi protocol"
-license = "MIT"
-
-[dependencies]
-tokio = { version = "1", features = ["full"] }
-axum = { version = "0.8", features = ["ws", "macros", "json"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-futures-util = "0.3"
-tokio-tungstenite = "0.26"
-reqwest = { version = "0.12", features = ["json", "blocking"] }
-clap = { version = "4.5", features = ["derive", "env"] }
-anyhow = "1.0"
-uuid = { version = "1.10", features = ["v4"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
-eframe = "0.29"
-opus = "0.3"
+description = "StackChan Local Mind: Offline Robot Perception, Voice & Fleet Hub in Rust"
 
 [[bin]]
-name = "cynpase-bot"
+name = "localmind-hub"
 path = "src/main.rs"
 
-[[bin]]
-name = "cynpase-gui"
-path = "src/gui_main.rs"
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+axum = { version = "0.7", features = ["ws", "multipart"] }
+rumqttc = "0.24"
+tokio-tungstenite = "0.24"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+reqwest = { version = "0.12", features = ["json", "stream", "multipart"] }
+futures-util = "0.3"
+opus = "0.3"
+hound = "3.5"
+uuid = { version = "1.10", features = ["v4"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
+tokio = { version = "1.40", features = ["full", "test-util"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
-tempfile = "3"
