@@ -1,12 +1,12 @@
 # Implementation Ledger — Project Local Mind
 
-## 2026-10-01 — Local Mind Architecture & Rewrite
-- Fully implemented StackChan "Local Mind" offline perception, voice, and fleet orchestration in Rust.
-- `src/vision/tracker.rs`: Built object tracking state machine (Candidate -> Stable -> Lost) with **strict hard clamp on vertical tilt servo [5.0°, 85.0°]** to eliminate servo stall hazards.
-- `src/bus/mqtt.rs`: Integrated `rumqttc` client for real-time telemetry, gaze targets, face expressions, and retained status.
-- `src/voice/`: Built voice coordinator integrating Whisper.cpp (`:8080`), Ollama (`:11434`) with real-time visual context injection, Pocket-TTS (`:8000`), and rate-limited autonomous narration (30s cooldown).
-- `src/api/mod.rs`: Implemented Axum REST endpoints on `:8088` (`/health`, `/stats`, `/say`, `/api/vision/frame`) with non-mutating `/stats` via `peek_tracks()`.
-- `hub/`: Unified XiaoZhi WebSocket protocol server on `:8100` with non-blocking faster-whisper CPU inference (`asyncio.to_thread`), burst warm-up frame pacing (~55ms), robust 80-char sentence splitting, and honest offline error handling.
-- `firmware/stackchan/stackchan_localmind.ino`: Delivered complete StackChan-BSP Arduino C++ firmware with dual-SSID failover, hardware servo clamp, and autonomous idle mode.
-- All 6 verification gates passed (`cargo test` and `uv run pytest tests/test_hub.py`).
-
+## 2026-10-01 — Local Mind Architecture & Autopsy Remediation
+- Remediated all P0, P1, and P2 audit items across Rust orchestrator, Python XiaoZhi voice hub, and Arduino firmware.
+- `hub/server.py`: Resolved mid-turn client disconnect traceback (`ConnectionClosedOK` caught safely in `send_json` and `cancel_active_turn`), added 15s incoming audio buffer limit to prevent unbounded RAM growth, offloaded file logs to `asyncio.to_thread`.
+- `hub/llm.py`: Implemented earliest-delimiter sentence splitting algorithm so punctuation order (`.`, `!`, `?`, `\n`) matches arrival order.
+- `src/vision/tracker.rs`: Built target state machine with strict hardware clamp $[5.0^\circ, 85.0^\circ]$, multi-object tracking association guard, and streak decay across frame gaps.
+- `src/bus/mqtt.rs`: Integrated `rumqttc` client with auto-resubscription on broker `ConnAck`, audio speak publishing, and emotion commands.
+- `src/api/mod.rs`: Implemented non-mutating `/stats` via `peek_tracks()`, honest `/health` reporting (`idle_waiting_npu` vs `simulated`), and synchronized `/say` (synthesize before face/audio broadcast).
+- `firmware/stackchan/stackchan_localmind.ino`: Dynamic MAC-derived MQTT client ID (`stackchan-{MAC}`), external `config.h` credentials, and hardware tilt clamping.
+- Resolved all Clippy warnings and removed unused dependencies (`tokio-tungstenite`, `tower-http`, `futures-util`, `uuid`, `av`).
+- All 6 verification gates passed cleanly (`cargo test` and `uv run pytest tests/test_hub.py`).

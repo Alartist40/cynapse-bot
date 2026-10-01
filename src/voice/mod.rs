@@ -19,6 +19,7 @@ pub struct VoiceOrchestrator {
 }
 
 impl VoiceOrchestrator {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         whisper_url: &str,
         ollama_host: &str,

@@ -7,18 +7,43 @@ from typing import AsyncGenerator
 import ollama
 
 
+def extract_earliest_sentence(buffer: str) -> tuple[str | None, str]:
+    """Find the earliest sentence boundary in the buffer.
+
+    Returns (extracted_sentence, remaining_buffer).
+    """
+    delimiters = [".", "!", "?", "\n"]
+    earliest_pos = -1
+    matched_delim = ""
+
+    for d in delimiters:
+        pos = buffer.find(d)
+        if pos != -1:
+            if earliest_pos == -1 or pos < earliest_pos:
+                earliest_pos = pos
+                matched_delim = d
+
+    if earliest_pos != -1:
+        sentence = (buffer[:earliest_pos] + matched_delim).strip()
+        remaining = buffer[earliest_pos + len(matched_delim):]
+        return sentence, remaining
+
+    return None, buffer
+
+
 def split_sentences(text: str) -> list[str]:
-    """Split text on sentence boundaries."""
-    delimiters = [". ", "! ", "? ", ".\n", "!\n", "?\n", "\n\n"]
+    """Split text on earliest sentence boundaries."""
     sentences = []
-    current = ""
-    for char in text:
-        current += char
-        if any(current.endswith(d) for d in delimiters):
-            sentences.append(current.strip())
-            current = ""
-    if current.strip():
-        sentences.append(current.strip())
+    buffer = text
+    while buffer:
+        sentence, remaining = extract_earliest_sentence(buffer)
+        if sentence:
+            sentences.append(sentence)
+            buffer = remaining
+        else:
+            if buffer.strip():
+                sentences.append(buffer.strip())
+            break
     return sentences
 
 
@@ -58,7 +83,6 @@ class LLMEngine:
         messages.append({"role": "user", "content": user_text})
 
         buffer = ""
-        delimiters = [".", "!", "?", "\n"]
 
         try:
             stream = await self.client.chat(
@@ -74,20 +98,17 @@ class LLMEngine:
                     continue
                 buffer += token
 
-                # 1. Punctuation boundary
-                has_punct = any(d in buffer for d in delimiters)
-                if has_punct:
-                    for d in delimiters:
-                        if d in buffer:
-                            parts = buffer.split(d, 1)
-                            sentence = (parts[0] + d).strip()
-                            buffer = parts[1] if len(parts) > 1 else ""
-                            if sentence:
-                                yield sentence
-                            break
+                # 1. Punctuation boundary (earliest occurrence)
+                while True:
+                    sentence, remaining = extract_earliest_sentence(buffer)
+                    if sentence:
+                        buffer = remaining
+                        yield sentence
+                    else:
+                        break
 
                 # 2. Length fallback: if buffer >= 80 chars without punctuation, split at last space
-                elif len(buffer) >= 80:
+                if len(buffer) >= 80:
                     last_space = buffer.rfind(" ")
                     if last_space != -1 and last_space >= 30:
                         chunk_text = buffer[:last_space].strip()
@@ -101,3 +122,4 @@ class LLMEngine:
 
         except asyncio.CancelledError:
             raise
+

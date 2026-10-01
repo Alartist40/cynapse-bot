@@ -73,7 +73,13 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthRespon
         status: "ok".to_string(),
         uptime_secs: uptime,
         services: serde_json::json!({
-            "vision": if state.detector.simulated { "simulated" } else { "ready" },
+            "vision": if state.detector.simulated {
+                "simulated"
+            } else if state.detector.is_ready() {
+                "ready"
+            } else {
+                "idle_waiting_npu"
+            },
             "whisper": state.voice.whisper.endpoint_url,
             "ollama": state.voice.llm.host,
             "tts": state.voice.tts.server_url,
@@ -101,18 +107,25 @@ async fn say_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<SayRequest>,
 ) -> Result<Json<SayResponse>, (StatusCode, String)> {
-    let expression = payload.expression.unwrap_or_else(|| "happy".to_string());
-
-    if let Some(bus) = &state.bus {
-        let _ = bus.publish_face(&expression).await;
-    }
-
+    // 1. Synthesize audio first — fail honestly if TTS is offline
     let audio = state
         .voice
         .tts
         .synthesize(&payload.text)
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, e))?;
+
+    let expression = payload.expression.unwrap_or_else(|| "happy".to_string());
+
+    // 2. Only publish face and audio commands after successful synthesis
+    if let Some(bus) = &state.bus {
+        if let Err(e) = bus.publish_face(&expression).await {
+            tracing::warn!("Failed to publish face command for /say: {}", e);
+        }
+        if let Err(e) = bus.publish_audio(&audio).await {
+            tracing::warn!("Failed to publish audio payload for /say: {}", e);
+        }
+    }
 
     Ok(Json(SayResponse {
         text: payload.text,
@@ -130,9 +143,13 @@ async fn vision_frame_handler(
     let (tracks, gaze) = state.tracker.lock().await.update(&detections);
 
     if let Some(bus) = &state.bus {
-        let _ = bus.publish_detections("stackchan", &detections).await;
+        if let Err(e) = bus.publish_detections("stackchan", &detections).await {
+            tracing::debug!("Failed to publish detections: {}", e);
+        }
         if let Some(g) = &gaze {
-            let _ = bus.publish_gaze(g).await;
+            if let Err(e) = bus.publish_gaze(g).await {
+                tracing::debug!("Failed to publish gaze command: {}", e);
+            }
         }
     }
 
@@ -142,3 +159,4 @@ async fn vision_frame_handler(
         tracks_count: tracks.len(),
     })
 }
+

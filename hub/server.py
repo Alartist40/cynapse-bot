@@ -24,6 +24,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("localbrain.hub")
 
+MAX_INCOMING_PCM_BYTES = 16000 * 2 * 15  # 15 seconds of 16kHz mono 16-bit PCM (480,000 bytes)
+
+
+def _append_log_entry(path: Path, entry: dict):
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
 
 class LocalBrainSession:
     """Manages the state and conversational pipeline for a single StackChan connection."""
@@ -64,10 +71,9 @@ class LocalBrainSession:
             "direction": direction,
             "payload": payload if isinstance(payload, dict) else {"raw": payload},
         }
-        with open(self.protocol_log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        await asyncio.to_thread(_append_log_entry, self.protocol_log_path, entry)
 
-    def log_latency(self, transcript: str, speech_to_audio_latency_ms: float):
+    async def log_latency(self, transcript: str, speech_to_audio_latency_ms: float):
         if not self.latency_log_path:
             return
         entry = {
@@ -76,18 +82,30 @@ class LocalBrainSession:
             "transcript": transcript,
             "speech_to_first_audio_ms": round(speech_to_audio_latency_ms, 2),
         }
-        with open(self.latency_log_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
+        await asyncio.to_thread(_append_log_entry, self.latency_log_path, entry)
 
     async def send_json(self, data: dict):
         text = json.dumps(data)
         await self.log_protocol("server->client", data)
-        await self.ws.send(text)
+        try:
+            await self.ws.send(text)
+        except websockets.ConnectionClosed:
+            logger.debug("Attempted to send JSON on closed websocket.")
+        except Exception as e:
+            logger.debug(f"Failed to send JSON frame: {e}")
 
     async def send_audio_frames(self, frames: list[bytes]):
         """Pace audio delivery to prevent ESP32 client buffer overruns."""
         for idx, frame in enumerate(frames):
-            await self.ws.send(frame)
+            try:
+                await self.ws.send(frame)
+            except websockets.ConnectionClosed:
+                logger.debug("Client disconnected during audio frame playback.")
+                break
+            except Exception as e:
+                logger.debug(f"Failed to send audio frame: {e}")
+                break
+
             if idx < 3:
                 # Fast burst for warm-up
                 await asyncio.sleep(0.005)
@@ -106,6 +124,7 @@ class LocalBrainSession:
             self.active_pipeline_task = None
             logger.info("Interrupted current turn (barge-in triggered).")
             await self.send_json({"type": "tts", "state": "stop"})
+
 
     async def handle_text_frame(self, message: str):
         try:
@@ -156,6 +175,9 @@ class LocalBrainSession:
 
     async def handle_binary_frame(self, opus_bytes: bytes):
         if self.is_listening:
+            if len(self.incoming_pcm) >= MAX_INCOMING_PCM_BYTES:
+                logger.warning("Incoming audio buffer exceeded 15s limit; dropping frame.")
+                return
             try:
                 pcm_frame = self.codec.decode_frame(opus_bytes)
                 self.incoming_pcm.extend(pcm_frame)
@@ -221,7 +243,7 @@ class LocalBrainSession:
                 if not first_audio_sent:
                     first_audio_sent = True
                     speech_to_first_audio = (time.time() - speech_stop_time) * 1000.0
-                    self.log_latency(transcript, speech_to_first_audio)
+                    await self.log_latency(transcript, speech_to_first_audio)
                     logger.info(f"First audio latency: {speech_to_first_audio:.1f}ms")
 
                 await self.send_json({"type": "tts", "state": "sentence_start", "text": sentence})
@@ -309,17 +331,22 @@ class LocalBrainHub:
             latency_log_path=self.latency_log,
         )
 
-        logger.info(f"New client connected: {websocket.remote_address}")
+        remote = getattr(websocket, "remote_address", "client")
+        logger.info(f"New client connected: {remote}")
         try:
             async for message in websocket:
                 if isinstance(message, str):
                     await session.handle_text_frame(message)
                 elif isinstance(message, bytes):
                     await session.handle_binary_frame(message)
-        except websockets.ConnectionClosed:
-            logger.info(f"Client disconnected: {websocket.remote_address}")
+        except websockets.ConnectionClosed as e:
+            logger.info(f"Client disconnected ({e.code}): {remote}")
+        except Exception as e:
+            logger.warning(f"Client connection error ({remote}): {e}")
         finally:
+            logger.info(f"Client session terminated: {remote}")
             await session.cancel_active_turn()
+
 
     async def start(self):
         logger.info(f"Starting LocalBrain Voice Hub on ws://{self.host}:{self.port}{self.endpoint_path} (mode={self.mode})")

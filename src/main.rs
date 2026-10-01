@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "cynpase_bot=info,cynapse_bot=info,tower_http=debug".into()),
+                .unwrap_or_else(|_| "cynapse_bot=info".into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
@@ -68,21 +68,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &config.mqtt.client_id,
     );
 
-    // Spawn robust MQTT background eventloop
-    tokio::spawn(MqttBus::run_event_loop(eventloop));
-
-    // Subscribe to topics
-    let bus_clone = bus_client.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        if let Err(e) = bus_clone.subscribe_topics().await {
-            tracing::warn!("Failed to subscribe to MQTT topics: {}", e);
-        }
-    });
+    // Spawn robust MQTT background eventloop with auto-reconnect subscription management
+    let bus_client_for_loop = bus_client.clone_client();
+    tokio::spawn(MqttBus::run_event_loop(bus_client_for_loop, eventloop));
 
     // Periodic retained hub/status publisher (FR-O2)
     let bus_status_clone = bus_client.clone();
     let start_time = Instant::now();
+    let is_simulated = config.vision_orchestrator.simulated_vision;
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(30)).await;
@@ -90,13 +83,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 uptime_secs: start_time.elapsed().as_secs(),
                 services: serde_json::json!({
                     "orchestrator": "online",
-                    "vision": "ready",
+                    "vision": if is_simulated { "simulated" } else { "idle_waiting_npu" },
                     "timestamp": chrono::Utc::now().to_rfc3339()
                 }),
             };
-            let _ = bus_status_clone.publish_status(&status).await;
+            if let Err(e) = bus_status_clone.publish_status(&status).await {
+                tracing::debug!("Failed to publish retained hub status: {}", e);
+            }
         }
     });
+
 
     let app_state = Arc::new(AppState {
         start_time,

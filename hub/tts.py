@@ -1,14 +1,10 @@
-"""Pocket-TTS client and Opus audio packager for LocalBrain Hub."""
-
 import asyncio
-import io
 import logging
 import httpx
 import numpy as np
-import scipy.signal
-import soundfile as sf
 
-from hub.audio import OpusCodec, wav_to_pcm_bytes, SAMPLE_RATE
+from hub.audio import OpusCodec, wav_to_pcm_bytes
+
 
 logger = logging.getLogger("localbrain.tts")
 

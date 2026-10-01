@@ -1,9 +1,6 @@
-"""Faster-Whisper STT engine for LocalBrain Hub."""
-
-import io
-import time
 import numpy as np
 from faster_whisper import WhisperModel
+
 
 
 class STTEngine:

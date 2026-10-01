@@ -90,3 +90,49 @@ fn test_hard_servo_limit_clamping() {
 
     println!("VISION_TRACKER_PASS");
 }
+
+#[test]
+fn test_multi_object_tracking_and_streak_decay() {
+    let mut tracker = VisionTracker::new(true);
+
+    let two_people = vec![
+        Detection {
+            class: "person".to_string(),
+            conf: 0.90,
+            cx: 0.2,
+            cy: 0.5,
+            w: 0.2,
+            h: 0.5,
+        },
+        Detection {
+            class: "person".to_string(),
+            conf: 0.85,
+            cx: 0.8,
+            cy: 0.5,
+            w: 0.2,
+            h: 0.5,
+        },
+    ];
+
+    // Frame 1: Both should create distinct tracks
+    let (tracks, _) = tracker.update(&two_people);
+    assert_eq!(tracks.len(), 2);
+    assert_ne!(tracks[0].id, tracks[1].id);
+
+    // After 5 frames, both become Stable
+    for _ in 2..=5 {
+        tracker.update(&two_people);
+    }
+    let (tracks, _) = tracker.update(&two_people);
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(tracks[0].state, TrackState::Stable);
+    assert_eq!(tracks[1].state, TrackState::Stable);
+
+    // Frame gap: if no detections are sent, streak decays
+    tracker.update(&[]);
+    let peek = tracker.peek_tracks();
+    assert_eq!(peek.len(), 2);
+    assert_eq!(peek[0].consecutive_frames, 0);
+    assert_eq!(peek[1].consecutive_frames, 0);
+}
+

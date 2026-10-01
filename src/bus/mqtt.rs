@@ -53,7 +53,12 @@ impl MqttBus {
         )
     }
 
-    pub async fn run_event_loop(mut eventloop: rumqttc::EventLoop) {
+    pub fn clone_client(&self) -> AsyncClient {
+        self.client.clone()
+    }
+
+
+    pub async fn run_event_loop(client: AsyncClient, mut eventloop: rumqttc::EventLoop) {
         loop {
             match eventloop.poll().await {
                 Ok(notification) => match notification {
@@ -63,7 +68,13 @@ impl MqttBus {
                         tracing::info!("MQTT received [{}] -> {}", topic, payload);
                     }
                     Event::Incoming(Incoming::ConnAck(_)) => {
-                        tracing::info!("MQTT broker connected successfully.");
+                        tracing::info!("MQTT broker connected/reconnected. Registering subscriptions...");
+                        if let Err(e) = client.subscribe("stackchan/event/#", QoS::AtLeastOnce).await {
+                            tracing::warn!("Failed to subscribe to stackchan/event/#: {}", e);
+                        }
+                        if let Err(e) = client.subscribe("fleet/+/telemetry", QoS::AtLeastOnce).await {
+                            tracing::warn!("Failed to subscribe to fleet/+/telemetry: {}", e);
+                        }
                     }
                     _ => {}
                 },
@@ -90,6 +101,17 @@ impl MqttBus {
         let payload = serde_json::to_string(&cmd).map_err(|e| e.to_string())?;
         self.client
             .publish("stackchan/cmd/face", QoS::AtLeastOnce, false, payload)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn publish_emotion(&self, emotion: &str) -> Result<(), String> {
+        self.publish_face(emotion).await
+    }
+
+    pub async fn publish_audio(&self, audio_bytes: &[u8]) -> Result<(), String> {
+        self.client
+            .publish("stackchan/cmd/audio", QoS::AtLeastOnce, false, audio_bytes)
             .await
             .map_err(|e| e.to_string())
     }
@@ -122,3 +144,4 @@ impl MqttBus {
             .map_err(|e| e.to_string())
     }
 }
+

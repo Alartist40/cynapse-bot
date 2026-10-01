@@ -13,17 +13,24 @@
 #include <ArduinoJson.h>
 #include <ESP32Servo.h>
 
-// Wi-Fi Config
-const char* WIFI_SSID_PRIMARY   = "Home_Router";
-const char* WIFI_PASS_PRIMARY   = "password123";
-const char* WIFI_SSID_FALLBACK  = "localmind";
-const char* WIFI_PASS_FALLBACK  = "localmind123";
+#if __has_include("config.h")
+  #include "config.h"
+#else
+  // Default Fallback Wi-Fi Config (Copy config.h.example -> config.h for custom setup)
+  #define WIFI_SSID_PRIMARY   "Home_Router"
+  #define WIFI_PASS_PRIMARY   "password123"
+  #define WIFI_SSID_FALLBACK  "localmind"
+  #define WIFI_PASS_FALLBACK  "localmind123"
 
-// Hub MQTT Config
-const char* MQTT_BROKER = "192.168.50.1";
-const int   MQTT_PORT   = 1883;
+  // Hub MQTT Config
+  #define MQTT_BROKER "192.168.50.1"
+  #define MQTT_PORT   1883
+  #define MQTT_USER   "localmind"
+  #define MQTT_PASS   "localmind123"
+#endif
 
 // Servo Pins (StackChan CoreS3 standard PWM pins)
+
 const int SERVO_PAN_PIN  = 1;
 const int SERVO_TILT_PIN = 2;
 
@@ -185,9 +192,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
             targetPan = constrain(rawPan, PAN_MIN_DEG, PAN_MAX_DEG);
             targetTilt = constrain(rawTilt, TILT_MIN_DEG, TILT_MAX_DEG); // Strict clamp
         }
-    } else if (strcmp(topic, "stackchan/cmd/face") == 0) {
-        const char* expr = doc["expression"] | "happy";
+    } else if (strcmp(topic, "stackchan/cmd/face") == 0 || strcmp(topic, "stackchan/cmd/emotion") == 0) {
+        const char* expr = doc["expression"] | doc["emotion"] | "happy";
         renderExpression(expr);
+    } else if (strcmp(topic, "stackchan/cmd/audio") == 0 || strcmp(topic, "stackchan/cmd/speak") == 0) {
+        // Speaker playback trigger (shows talking indicator on display)
+        renderExpression("talking");
     }
 }
 
@@ -198,7 +208,19 @@ void renderExpression(const char* expr) {
 }
 
 void reconnectMQTT() {
-    if (mqttClient.connect("stackchan-core-s3")) {
+    uint64_t chipid = ESP.getEfuseMac();
+    char clientId[32];
+    snprintf(clientId, sizeof(clientId), "stackchan-%04X%08X", (uint16_t)(chipid >> 32), (uint32_t)chipid);
+
+    #if defined(MQTT_USER) && defined(MQTT_PASS)
+    bool connected = mqttClient.connect(clientId, MQTT_USER, MQTT_PASS);
+    #else
+    bool connected = mqttClient.connect(clientId);
+    #endif
+
+    if (connected) {
+        Serial.printf("MQTT connected as %s\n", clientId);
         mqttClient.subscribe("stackchan/cmd/#");
     }
 }
+

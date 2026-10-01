@@ -1,0 +1,13 @@
+#pragma once
+
+// Wi-Fi Credentials
+#define WIFI_SSID_PRIMARY   "Your_Home_WiFi"
+#define WIFI_PASS_PRIMARY   "your_wifi_password"
+#define WIFI_SSID_FALLBACK  "localmind"
+#define WIFI_PASS_FALLBACK  "localmind123"
+
+// Hub MQTT Config
+#define MQTT_BROKER "192.168.50.1"
+#define MQTT_PORT   1883
+#define MQTT_USER   "localmind"
+#define MQTT_PASS   "localmind123"

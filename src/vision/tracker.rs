@@ -83,7 +83,10 @@ impl VisionTracker {
             let mut min_dist = 0.35; // association threshold
 
             for (id, track) in self.tracks.iter() {
-                if track.class == det.class && track.state != TrackState::Lost {
+                if !matched_track_ids.contains(id)
+                    && track.class == det.class
+                    && track.state != TrackState::Lost
+                {
                     let dist = ((track.cx - det.cx).powi(2) + (track.cy - det.cy).powi(2)).sqrt();
                     if dist < min_dist {
                         min_dist = dist;
@@ -130,18 +133,20 @@ impl VisionTracker {
             }
         }
 
-        // Increment missing frames for unmatched tracks
+        // Increment missing frames and reset consecutive streak for unmatched tracks
         let all_ids: Vec<u32> = self.tracks.keys().copied().collect();
         for id in all_ids {
             if !matched_track_ids.contains(&id) {
                 if let Some(track) = self.tracks.get_mut(&id) {
                     track.missing_frames += 1;
+                    track.consecutive_frames = 0;
                     if track.missing_frames >= LOST_FRAME_THRESHOLD {
                         track.state = TrackState::Lost;
                     }
                 }
             }
         }
+
 
         // Cleanup lost tracks
         self.tracks.retain(|_, t| t.state != TrackState::Lost);

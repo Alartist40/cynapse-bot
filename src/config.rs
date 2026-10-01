@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub vision_orchestrator: VisionOrchestratorConfig,
@@ -16,6 +16,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub audio: AudioConfig,
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VisionOrchestratorConfig {
@@ -233,26 +234,30 @@ impl Default for AudioConfig {
     }
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            vision_orchestrator: VisionOrchestratorConfig::default(),
-            mqtt: MqttConfig::default(),
-            stt: SttConfig::default(),
-            llm: LlmConfig::default(),
-            tts: TtsConfig::default(),
-            audio: AudioConfig::default(),
+impl AppConfig {
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Self {
+        let path_ref = path.as_ref();
+        match std::fs::read_to_string(path_ref) {
+            Ok(content) => match serde_yaml::from_str(&content) {
+                Ok(config) => config,
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to parse config file {:?}: {}. Using default configuration.",
+                        path_ref,
+                        e
+                    );
+                    Self::default()
+                }
+            },
+            Err(e) => {
+                tracing::info!(
+                    "Config file {:?} not found or unreadable ({}). Using default configuration.",
+                    path_ref,
+                    e
+                );
+                Self::default()
+            }
         }
     }
 }
 
-impl AppConfig {
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Self {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(config) = serde_yaml::from_str(&content) {
-                return config;
-            }
-        }
-        Self::default()
-    }
-}

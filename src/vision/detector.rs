@@ -25,14 +25,17 @@ impl VisionDetector {
         }
     }
 
+    pub fn is_ready(&self) -> bool {
+        self.simulated
+    }
+
     /// Process a frame buffer (JPEG / raw bytes) and extract bounding box detections.
     pub fn detect_objects(&self, frame_bytes: &[u8]) -> Vec<Detection> {
         if !self.simulated {
-            // In real mode, empty if no hardware RKNN NPU model is actively attached
+            // In real mode without hardware RKNN NPU model loaded, returns empty
             if frame_bytes.is_empty() {
                 return Vec::new();
             }
-            // Real inference returns empty until RKNN NPU model inference is executed
             return Vec::new();
         }
 
@@ -40,14 +43,20 @@ impl VisionDetector {
         if frame_bytes.is_empty() {
             Vec::new()
         } else {
-            vec![Detection {
+            let candidate = Detection {
                 class: "person".to_string(),
                 conf: 0.88,
                 cx: 0.5,
                 cy: 0.45,
                 w: 0.35,
                 h: 0.60,
-            }]
+            };
+            if candidate.conf >= self.confidence_threshold {
+                vec![candidate]
+            } else {
+                Vec::new()
+            }
         }
     }
 }
+

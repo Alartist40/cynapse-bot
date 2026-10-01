@@ -8,10 +8,20 @@ from hub.tts import TTSEngine
 def test_sentence_chunking():
     text = "Hello there! How are you doing today? I am fine. This is a test without punctuation"
     sentences = split_sentences(text)
-    assert len(sentences) >= 3
+    assert len(sentences) == 4
     assert sentences[0] == "Hello there!"
     assert sentences[1] == "How are you doing today?"
     assert sentences[2] == "I am fine."
+    assert sentences[3] == "This is a test without punctuation"
+
+
+def test_sentence_chunking_earliest_order():
+    text = "Hello! How are you."
+    sentences = split_sentences(text)
+    assert len(sentences) == 2
+    assert sentences[0] == "Hello!"
+    assert sentences[1] == "How are you."
+
 
 
 def test_opus_codec_roundtrip():
