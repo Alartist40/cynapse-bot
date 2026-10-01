@@ -105,10 +105,6 @@ impl MqttBus {
             .map_err(|e| e.to_string())
     }
 
-    pub async fn publish_emotion(&self, emotion: &str) -> Result<(), String> {
-        self.publish_face(emotion).await
-    }
-
     pub async fn publish_audio(&self, audio_bytes: &[u8]) -> Result<(), String> {
         self.client
             .publish("stackchan/cmd/audio", QoS::AtLeastOnce, false, audio_bytes)
@@ -132,16 +128,6 @@ impl MqttBus {
             .await
             .map_err(|e| e.to_string())
     }
-
-    pub async fn subscribe_topics(&self) -> Result<(), String> {
-        self.client
-            .subscribe("stackchan/event/#", QoS::AtLeastOnce)
-            .await
-            .map_err(|e| e.to_string())?;
-        self.client
-            .subscribe("fleet/+/telemetry", QoS::AtLeastOnce)
-            .await
-            .map_err(|e| e.to_string())
-    }
 }
+
 

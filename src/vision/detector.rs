@@ -25,9 +25,14 @@ impl VisionDetector {
         }
     }
 
-    pub fn is_ready(&self) -> bool {
-        self.simulated
+    pub fn status_str(&self) -> &'static str {
+        if self.simulated {
+            "simulated"
+        } else {
+            "idle_waiting_npu"
+        }
     }
+
 
     /// Process a frame buffer (JPEG / raw bytes) and extract bounding box detections.
     pub fn detect_objects(&self, frame_bytes: &[u8]) -> Vec<Detection> {

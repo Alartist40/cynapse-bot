@@ -73,13 +73,8 @@ async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthRespon
         status: "ok".to_string(),
         uptime_secs: uptime,
         services: serde_json::json!({
-            "vision": if state.detector.simulated {
-                "simulated"
-            } else if state.detector.is_ready() {
-                "ready"
-            } else {
-                "idle_waiting_npu"
-            },
+            "vision": state.detector.status_str(),
+
             "whisper": state.voice.whisper.endpoint_url,
             "ollama": state.voice.llm.host,
             "tts": state.voice.tts.server_url,
