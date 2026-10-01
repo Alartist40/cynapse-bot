@@ -24,11 +24,24 @@ def extract_earliest_sentence(buffer: str) -> tuple[str | None, str]:
                 matched_delim = d
 
     if earliest_pos != -1:
-        sentence = (buffer[:earliest_pos] + matched_delim).strip()
-        remaining = buffer[earliest_pos + len(matched_delim):]
+        # Advance past any contiguous punctuation delimiters (e.g. '...', '!!', '?!', etc.)
+        end_pos = earliest_pos + len(matched_delim)
+        while end_pos < len(buffer) and buffer[end_pos] in ".!?\n":
+            end_pos += 1
+
+        sentence = buffer[:end_pos].strip()
+        remaining = buffer[end_pos:].lstrip(" \t\n")
+
+        # Guard against yielding pure punctuation or empty fragments
+        if not any(c.isalnum() for c in sentence):
+            if remaining:
+                return extract_earliest_sentence(remaining)
+            return None, ""
+
         return sentence, remaining
 
     return None, buffer
+
 
 
 def split_sentences(text: str) -> list[str]:

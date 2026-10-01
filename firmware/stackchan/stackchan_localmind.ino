@@ -16,20 +16,20 @@
 #if __has_include("config.h")
   #include "config.h"
 #else
-  // Default Fallback Wi-Fi Config (Copy config.h.example -> config.h for custom setup)
-  #define WIFI_SSID_PRIMARY   "Home_Router"
-  #define WIFI_PASS_PRIMARY   "password123"
+  #warning "config.h not found! Copy firmware/stackchan/config.h.example -> config.h to configure Wi-Fi and MQTT credentials."
+  #define WIFI_SSID_PRIMARY   ""
+  #define WIFI_PASS_PRIMARY   ""
   #define WIFI_SSID_FALLBACK  "localmind"
-  #define WIFI_PASS_FALLBACK  "localmind123"
+  #define WIFI_PASS_FALLBACK  ""
 
-  // Hub MQTT Config
   #define MQTT_BROKER "192.168.50.1"
   #define MQTT_PORT   1883
-  #define MQTT_USER   "localmind"
-  #define MQTT_PASS   "localmind123"
+  #define MQTT_USER   ""
+  #define MQTT_PASS   ""
 #endif
 
 // Servo Pins (StackChan CoreS3 standard PWM pins)
+
 
 const int SERVO_PAN_PIN  = 1;
 const int SERVO_TILT_PIN = 2;

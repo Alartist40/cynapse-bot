@@ -92,7 +92,8 @@ class LocalBrainSession:
         except websockets.ConnectionClosed:
             logger.debug("Attempted to send JSON on closed websocket.")
         except Exception as e:
-            logger.debug(f"Failed to send JSON frame: {e}")
+            logger.error(f"Unexpected error sending JSON frame: {e}", exc_info=True)
+            raise
 
     async def send_audio_frames(self, frames: list[bytes]):
         """Pace audio delivery to prevent ESP32 client buffer overruns."""
@@ -103,8 +104,9 @@ class LocalBrainSession:
                 logger.debug("Client disconnected during audio frame playback.")
                 break
             except Exception as e:
-                logger.debug(f"Failed to send audio frame: {e}")
+                logger.error(f"Unexpected error sending audio frame: {e}", exc_info=True)
                 break
+
 
             if idx < 3:
                 # Fast burst for warm-up
@@ -342,10 +344,11 @@ class LocalBrainHub:
         except websockets.ConnectionClosed as e:
             logger.info(f"Client disconnected ({e.code}): {remote}")
         except Exception as e:
-            logger.warning(f"Client connection error ({remote}): {e}")
+            logger.error(f"Unhandled error in client connection ({remote}): {e}", exc_info=True)
         finally:
             logger.info(f"Client session terminated: {remote}")
             await session.cancel_active_turn()
+
 
 
     async def start(self):

@@ -23,6 +23,15 @@ def test_sentence_chunking_earliest_order():
     assert sentences[1] == "How are you."
 
 
+def test_sentence_chunking_ellipsis():
+    text = "Wait... x"
+    sentences = split_sentences(text)
+    assert len(sentences) == 2
+    assert sentences[0] == "Wait..."
+    assert sentences[1] == "x"
+
+
+
 
 def test_opus_codec_roundtrip():
     codec = OpusCodec(sample_rate=16000, channels=1)

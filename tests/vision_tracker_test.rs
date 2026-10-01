@@ -136,3 +136,52 @@ fn test_multi_object_tracking_and_streak_decay() {
     assert_eq!(peek[1].consecutive_frames, 0);
 }
 
+#[test]
+fn test_multi_object_association_within_threshold_guard() {
+    let mut tracker = VisionTracker::new(true);
+
+    // Frame 1: Single detection creates Track #1 at cx = 0.50
+    let det_init = vec![Detection {
+        class: "person".to_string(),
+        conf: 0.90,
+        cx: 0.50,
+        cy: 0.50,
+        w: 0.2,
+        h: 0.5,
+    }];
+    let (tracks, _) = tracker.update(&det_init);
+    assert_eq!(tracks.len(), 1);
+    let track_id_1 = tracks[0].id;
+
+    // Frame 2: Two detections of same class both within association distance (0.35) of Track #1
+    // Detection A is at cx = 0.52 (dist = 0.02)
+    // Detection B is at cx = 0.58 (dist = 0.08)
+    let det_two_close = vec![
+        Detection {
+            class: "person".to_string(),
+            conf: 0.92,
+            cx: 0.52,
+            cy: 0.50,
+            w: 0.2,
+            h: 0.5,
+        },
+        Detection {
+            class: "person".to_string(),
+            conf: 0.88,
+            cx: 0.58,
+            cy: 0.50,
+            w: 0.2,
+            h: 0.5,
+        },
+    ];
+
+    let (tracks, _) = tracker.update(&det_two_close);
+    // The !matched_track_ids.contains guard MUST prevent Detection B from hijacking Track #1,
+    // creating a distinct second track instead.
+    assert_eq!(tracks.len(), 2, "Must contain exactly 2 distinct tracks");
+    let track_ids: Vec<u32> = tracks.iter().map(|t| t.id).collect();
+    assert!(track_ids.contains(&track_id_1), "Track #1 must be updated");
+    assert_eq!(tracks.iter().filter(|t| t.id == track_id_1).count(), 1);
+}
+
+
