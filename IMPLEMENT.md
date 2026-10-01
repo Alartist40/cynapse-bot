@@ -1,7 +1,7 @@
 # Implementation Ledger — Project Local Mind
 
 ## 2026-10-01 — Local Mind Architecture & Autopsy Remediation
-- Remediated all confirmed P0, P1, and P2 audit items across Rust orchestrator, Python XiaoZhi voice hub, and Arduino firmware.
+- Remediated confirmed P0, P1, and P2 audit items across Rust orchestrator, Python XiaoZhi voice hub, and Arduino firmware [DEFERRED: /say end-to-end audio playback — firmware cannot receive/play WAV over MQTT (cmd/audio is visual indicator only; audio streaming handled via WebSocket :8100); real RKNN NPU model execution deferred to hardware bench].
 - `hub/server.py`: Resolved mid-turn client disconnect traceback (`ConnectionClosed` caught safely in `send_json`, `send_audio_frames`, and `cancel_active_turn`), added 15s incoming audio buffer limit to prevent unbounded RAM growth, offloaded file logs to `asyncio.to_thread`, logged unexpected errors with stack traces.
 - `hub/llm.py`: Implemented earliest-delimiter sentence splitting with ellipsis (`...`) support and non-alphanumeric token protection.
 - `src/vision/tracker.rs`: Built target state machine with strict hardware clamp $[5.0^\circ, 85.0^\circ]$, `!matched_track_ids.contains(&id)` association guard (tested with proximate detections within threshold), and streak decay across frame gaps.
