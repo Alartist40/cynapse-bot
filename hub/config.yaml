@@ -14,8 +14,9 @@ vision_orchestrator:
   confidence_threshold: 0.5
   mirror_pan: true # Camera mirrored coordinate mapping
 
+# MQTT Bus (Mosquitto :1883)
 mqtt:
-  host: "127.0.0.1"
+  host: "127.0.0.1" # Host loopback for orchestrator (robots on Wi-Fi connect to host LAN IP, e.g. 192.168.1.50 or fallback 192.168.50.1)
   port: 1883
   client_id: "localmind-orchestrator"
   reconnect_interval_sec: 5

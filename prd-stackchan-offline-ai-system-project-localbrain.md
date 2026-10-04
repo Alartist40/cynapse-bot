@@ -142,20 +142,22 @@ The hub exposes `ws://<host-ip>:8000/xiaozhi/v1/` (confirm the exact path agains
 
 Each phase has **Steps** and a **Definition of Done (DoD)**. Do not start the next phase until the DoD passes.
 
-### 8.0 Current Status Snapshot — `cynapse-bot` (as of the 2026-10-04 review)
+### 8.0 Current Status Snapshot — `cynapse-bot` (updated 2026-10-04)
 
-Phases 1–6 are **substantially implemented** in [Alartist40/cynapse-bot](https://github.com/Alartist40/cynapse-bot) (Rust orchestrator + Python hub + MQTT firmware). Remaining gaps, in work order:
+Phases 1–6 are **substantially implemented** in [Alartist40/cynapse-bot](https://github.com/Alartist40/cynapse-bot) (Rust orchestrator + Python hub + MQTT firmware), including two rounds of review fixes (commits `01036c5`, `0cd5cf5`, `4bf29fa`: streaming TTS, hello/OTA/goodbye handlers, stateful audio pacer, streaming 24k→16k resampler, `/say` lightweighting, dead-path cleanup, tokio Mutex). Remaining gaps, in work order:
 
-| # | Gap | Phase | Severity |
+| # | Gap | Phase | Status |
 |---|---|---|---|
-| 1 | **Firmware can't reach the voice hub**: `stackchan_localmind.ino` speaks MQTT only — no XiaoZhi WebSocket client. Merge the MQTT gaze/face subscriber into a xiaozhi-based firmware (stock or [eid390](https://github.com/eid390/stackchan-xiaozhi-firmware) build) instead of keeping the standalone `.ino` | 2 | 🔴 |
-| 2 | **Verify servo model**: pan axis may be a 360° continuous-rotation feedback servo — angle writes (`servoPan.write(angle)`) would become speed control, breaking gaze tracking | 2/8 | 🔴 |
-| 3 | **TTS is non-streaming**: `TTSEngine` buffers the whole sentence WAV before sending frame 1 — switch to `client.stream()` + chunk→Opus pipelining | 5 | 🟠 |
-| 4 | **Hello/OTA gaps**: verify `hello` reply fields (`features`, `device_id`) and OTA behavior against a real firmware session; extend `test_hub.py` with recorded fixtures | 1 | 🟠 |
-| 5 | **No real YOLO inference**: `detector.rs` returns empty in real mode; wire `ort` + yolo11s ONNX, then camera source | 8 | 🟡 |
-| 6 | **No camera feed source**: nobody POSTs to `/api/vision/frame`; start with a USB webcam on the SBC, ESP32-CAM spokes later | 8 | 🟡 |
-| 7 | `/say` MQTT audio path publishes WAVs the firmware cannot play — route speech via the hub (D11), keep `/say` for face only | 5 | 🟠 |
-| 8 | Config default mismatch (hub `mqtt.host: 127.0.0.1` vs firmware `192.168.50.1`); raise PubSubClient buffer if payloads grow | 2 | 🟡 |
+| 1 | **Firmware can't reach the voice hub**: `stackchan_localmind.ino` speaks MQTT only — no XiaoZhi WebSocket client. Merge the MQTT gaze/face subscriber into a xiaozhi-based firmware (stock or [eid390](https://github.com/eid390/stackchan-xiaozhi-firmware) build) instead of keeping the standalone `.ino` | 2 | 🔴 open — **next up** |
+| 2 | **Verify servo model**: pan axis may be a 360° continuous-rotation feedback servo — angle writes (`servoPan.write(angle)`) would become speed control, breaking gaze tracking | 2/8 | 🔴 open (documented in firmware comments; physical verification pending) |
+| 3 | ~~TTS non-streaming~~ Progressive Opus streaming + stateful pacer (burst→55 ms/frame) + `aclose()` cleanup | 5 | ✅ resolved (`4bf29fa`) |
+| 4 | ~~Hello/OTA gaps~~ `version` echo, `features: {"mcp": false}`, `ota → up_to_date`, `goodbye` handler | 1 | ✅ resolved (`01036c5`) — re-verify against a real device handshake |
+| 5 | **No real YOLO inference**: `detector.rs` returns empty in real mode; wire `ort` + yolo11s ONNX, then camera source | 8 | 🟡 open |
+| 6 | **No camera feed source**: nobody POSTs to `/api/vision/frame`; start with a USB webcam on the SBC, ESP32-CAM spokes later | 8 | 🟡 open |
+| 7 | ~~`/say` MQTT audio path~~ `/say` now publishes lightweight `SayCommand` JSON + face; no WAV over MQTT (D11) | 5 | ✅ resolved (`4bf29fa`) |
+| 8 | ~~Config default mismatch~~ Documented host-loopback (`127.0.0.1`) vs robot LAN/hotspot broker IP (`192.168.1.50` / `192.168.50.1`) | 2 | ✅ resolved |
+
+**Note on the resolved items:** gaps #3/#4/#7 were fixed, then a review pass found two regressions (pacing defeated by per-frame calls; sample-rate assumption with no resampling) — both were fixed properly in `4bf29fa` (stateful pacer + `StreamingWavDecoder` with RIFF parsing and phase-preserving 24k→16k resampling, tested across 1 B–64 KB chunk sizes). Lesson encoded: **every "resolved" protocol/audio item must be re-validated against a real device session, not only unit tests.**
 
 ---
 

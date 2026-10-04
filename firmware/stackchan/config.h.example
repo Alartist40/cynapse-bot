@@ -6,7 +6,8 @@
 #define WIFI_SSID_FALLBACK  "localmind"
 #define WIFI_PASS_FALLBACK  "localmind123"
 
-// Hub MQTT Config
+// Hub MQTT Broker Config
+// Set to your Host machine's static LAN IP (e.g. "192.168.1.50") or Hub Hotspot IP ("192.168.50.1")
 #define MQTT_BROKER "192.168.50.1"
 #define MQTT_PORT   1883
 #define MQTT_USER   "localmind"
