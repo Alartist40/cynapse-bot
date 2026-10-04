@@ -201,10 +201,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         renderExpression(expr);
     } else if (strcmp(topic, "stackchan/cmd/say") == 0) {
         const char* expr = doc["expression"] | "happy";
-        renderExpression(expr);
-    } else if (strcmp(topic, "stackchan/cmd/audio") == 0 || strcmp(topic, "stackchan/cmd/speak") == 0) {
-        // Speaker playback trigger (shows talking indicator on display)
-        renderExpression("talking");
+        const char* text = doc["text"] | "";
+        renderSay(expr, text);
     }
 }
 
@@ -212,6 +210,14 @@ void renderExpression(const char* expr) {
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(60, 100);
     M5.Lcd.printf("[%s]", expr);
+}
+
+void renderSay(const char* expr, const char* text) {
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setCursor(20, 40);
+    M5.Lcd.printf("[%s]", expr);
+    M5.Lcd.setCursor(20, 80);
+    M5.Lcd.printf("%s", text);
 }
 
 void reconnectMQTT() {

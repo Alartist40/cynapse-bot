@@ -4,7 +4,7 @@ import logging
 import httpx
 import numpy as np
 
-from hub.audio import OpusCodec, wav_to_pcm_bytes
+from hub.audio import OpusCodec, StreamingWavDecoder, wav_to_pcm_bytes
 
 
 logger = logging.getLogger("localbrain.tts")
@@ -26,7 +26,6 @@ class TTSEngine:
         self.dev_fallbacks = dev_fallbacks
         self.codec = OpusCodec(sample_rate=sample_rate)
         self.client = httpx.AsyncClient(timeout=15.0)
-        self.frame_bytes_len = int(sample_rate * 0.06) * 2  # 1920 bytes for 60ms @ 16kHz mono 16-bit
 
     async def stream_speech_opus_frames(
         self,
@@ -39,8 +38,7 @@ class TTSEngine:
 
         selected_voice = voice or self.voice
         url = f"{self.server_url}/tts"
-        pcm_buffer = bytearray()
-        header_stripped = False
+        decoder = StreamingWavDecoder(target_sample_rate=self.sample_rate)
 
         try:
             async with self.client.stream(
@@ -50,25 +48,11 @@ class TTSEngine:
             ) as response:
                 if response.status_code == 200:
                     async for chunk in response.aiter_bytes():
-                        if not header_stripped:
-                            pcm_buffer.extend(chunk)
-                            if len(pcm_buffer) >= 44:
-                                # Strip 44-byte WAV header if present (RIFF header)
-                                if bytes(pcm_buffer[:4]) == b"RIFF":
-                                    pcm_buffer = pcm_buffer[44:]
-                                header_stripped = True
-                        else:
-                            pcm_buffer.extend(chunk)
+                        for pcm_frame in decoder.feed_chunk(chunk):
+                            yield self.codec.encode_frame(pcm_frame)
 
-                        while len(pcm_buffer) >= self.frame_bytes_len:
-                            frame_pcm = bytes(pcm_buffer[: self.frame_bytes_len])
-                            del pcm_buffer[: self.frame_bytes_len]
-                            yield self.codec.encode_frame(frame_pcm)
-
-                    # Flush remaining partial frame if present
-                    if pcm_buffer:
-                        padded = bytes(pcm_buffer) + (b"\x00" * (self.frame_bytes_len - len(pcm_buffer)))
-                        yield self.codec.encode_frame(padded)
+                    for pcm_frame in decoder.flush():
+                        yield self.codec.encode_frame(pcm_frame)
                     return
                 else:
                     logger.warning(f"Pocket-TTS returned status {response.status_code}")

@@ -25,7 +25,7 @@
   EXPECT: ORCHESTRATOR_API_PASS
   EVIDENCE: ORCHESTRATOR_API_PASS (Verified 2026-10-01)
 
-- [x] G6: Python XiaoZhi Voice Hub streaming audio, earliest boundary & ellipsis chunking, and disconnect safety verified
+- [x] G6: Python XiaoZhi Voice Hub streaming audio, streaming WAV decoder with 24k->16k resampling, stateful audio pacing, and disconnect safety verified
   CHECK: uv run pytest tests/test_hub.py -v
-  EXPECT: 8 passed
-  EVIDENCE: 8 passed (Verified 2026-10-04)
+  EXPECT: 10 passed
+  EVIDENCE: 10 passed (Verified 2026-10-04)

@@ -149,3 +149,96 @@ async def test_session_protocol_frames(tmp_path):
 
     await tts.close()
 
+
+def test_streaming_wav_decoder_24k_and_16k():
+    import io
+    import wave
+    from hub.audio import StreamingWavDecoder
+
+    def generate_wav(freq=440, duration=0.5, sample_rate=24000):
+        t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
+        samples = (np.sin(2 * np.pi * freq * t) * 32767).astype(np.int16)
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(sample_rate)
+            wf.writeframes(samples.tobytes())
+        return buf.getvalue()
+
+    # 1. Test 24k WAV stream
+    wav_24k = generate_wav(440, 0.6, 24000)
+    dec_24k = StreamingWavDecoder(target_sample_rate=16000)
+    frames_24k = []
+    # Feed in arbitrary chunks
+    for i in range(0, len(wav_24k), 128):
+        frames_24k.extend(dec_24k.feed_chunk(wav_24k[i : i + 128]))
+    frames_24k.extend(dec_24k.flush())
+
+    assert len(frames_24k) == 10  # 0.6s @ 60ms/frame = 10 frames
+    for f in frames_24k:
+        assert len(f) == 1920  # 960 samples * 2 bytes
+
+    # 2. Test 16k WAV stream
+    wav_16k = generate_wav(440, 0.3, 16000)
+    dec_16k = StreamingWavDecoder(target_sample_rate=16000)
+    frames_16k = []
+    for i in range(0, len(wav_16k), 256):
+        frames_16k.extend(dec_16k.feed_chunk(wav_16k[i : i + 256]))
+    frames_16k.extend(dec_16k.flush())
+
+    assert len(frames_16k) == 5  # 0.3s @ 60ms/frame = 5 frames
+    for f in frames_16k:
+        assert len(f) == 1920
+
+
+@pytest.mark.asyncio
+async def test_stateful_audio_pacing(tmp_path, monkeypatch):
+    import asyncio
+    from hub.server import LocalBrainSession
+    from hub.stt import STTEngine
+    from hub.llm import LLMEngine
+
+    sleep_calls = []
+
+    async def mock_sleep(duration):
+        sleep_calls.append(duration)
+
+    monkeypatch.setattr(asyncio, "sleep", mock_sleep)
+
+    ws = MockWebSocket()
+    stt = STTEngine(model_size="tiny.en")
+    llm = LLMEngine()
+    tts = TTSEngine(dev_fallbacks=True)
+
+    session = LocalBrainSession(
+        ws=ws,
+        mode="full",
+        stt=stt,
+        llm=llm,
+        tts=tts,
+        protocol_log_path=tmp_path / "protocol.log",
+        latency_log_path=tmp_path / "latency.log",
+    )
+
+    # Send 5 frames one by one
+    dummy_frame = b"\x00" * 100
+    for _ in range(5):
+        await session.send_audio_frame(dummy_frame)
+
+    assert len(sleep_calls) == 5
+    # First 3 frames should have 5ms burst sleep
+    assert sleep_calls[0] == 0.005
+    assert sleep_calls[1] == 0.005
+    assert sleep_calls[2] == 0.005
+    # Frames 4 and 5 should have 55ms real-time pacing sleep
+    assert sleep_calls[3] == 0.055
+    assert sleep_calls[4] == 0.055
+
+    # Cancel turn resets pacer
+    await session.cancel_active_turn()
+    assert session.audio_frames_sent == 0
+
+    await tts.close()
+
+

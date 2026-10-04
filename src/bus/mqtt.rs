@@ -123,13 +123,6 @@ impl MqttBus {
             .map_err(|e| e.to_string())
     }
 
-    pub async fn publish_audio(&self, audio_bytes: &[u8]) -> Result<(), String> {
-        self.client
-            .publish("stackchan/cmd/audio", QoS::AtLeastOnce, false, audio_bytes)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
     pub async fn publish_detections(&self, src: &str, detections: &[Detection]) -> Result<(), String> {
         let topic = format!("vision/detections/{}", src);
         let payload = serde_json::to_string(detections).map_err(|e| e.to_string())?;

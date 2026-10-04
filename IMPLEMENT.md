@@ -18,3 +18,11 @@
 - `src/voice/mod.rs`: Converted `last_narration_instant` Mutex from `std::sync::Mutex` to `tokio::sync::Mutex`.
 - `firmware/stackchan/stackchan_localmind.ino`: Increased `mqttClient.setBufferSize(1024)`, added `stackchan/cmd/say` JSON handler, and documented continuous-rotation vs positional pan servo kinematics.
 - `tests/test_hub.py`: Added tests for progressive streaming TTS, handshake features, OTA response, and clean goodbye session termination (8/8 passed). All Rust tests (11/11 passed) and clippy (`0 warnings`) verified.
+
+## 2026-10-04 (Follow-up) — Stateful Audio Pacing, Streaming WAV Resampling & Cleanup
+- `hub/audio.py`: Created `StreamingWavDecoder` that parses RIFF/WAVE headers (handling `fmt `, `data`, `LIST` chunks) and performs streaming linear interpolation with continuous phase preservation to accurately downsample 24kHz/any-rate audio to 16kHz mono PCM frames (1920B) across arbitrary network chunk boundaries (1B to 64KB).
+- `hub/tts.py`: Wired `StreamingWavDecoder` into `stream_speech_opus_frames()`, fixing sample-rate pitch/speed regression.
+- `hub/server.py`: Replaced stateless batch index pacing with stateful `audio_frames_sent` per turn (3-frame initial 5ms warm-up burst + subsequent 55ms real-time pacing per 60ms frame), and added `try ... finally: await gen.aclose()` to promptly drop HTTP streaming connections upon barge-in.
+- `src/api/mod.rs`: Made `/say` endpoint lightweight, removing redundant full TTS synthesis when dispatching face/text notifications over MQTT.
+- `src/bus/mqtt.rs` & `firmware/stackchan/stackchan_localmind.ino`: Removed dead `publish_audio` and `cmd/audio` paths; implemented `renderSay(expr, text)` LCD rendering on `stackchan/cmd/say`.
+- Verified with 10/10 Python unit tests and 11/11 Rust integration tests (`0 clippy warnings`).

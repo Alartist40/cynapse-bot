@@ -61,6 +61,7 @@ class LocalBrainSession:
         self.incoming_pcm = bytearray()
         self.active_pipeline_task: asyncio.Task | None = None
         self.speech_stop_time: float = 0.0
+        self.audio_frames_sent: int = 0
 
     async def log_protocol(self, direction: str, payload: dict | str):
         if not self.protocol_log_path:
@@ -95,28 +96,36 @@ class LocalBrainSession:
             logger.error(f"Unexpected error sending JSON frame: {e}", exc_info=True)
             raise
 
-    async def send_audio_frames(self, frames: list[bytes]):
-        """Pace audio delivery to prevent ESP32 client buffer overruns."""
-        for idx, frame in enumerate(frames):
-            try:
-                await self.ws.send(frame)
-            except websockets.ConnectionClosed:
-                logger.debug("Client disconnected during audio frame playback.")
-                break
-            except Exception as e:
-                logger.error(f"Unexpected error sending audio frame: {e}", exc_info=True)
-                break
+    async def send_audio_frame(self, frame: bytes) -> bool:
+        """Pace audio delivery statefully per turn to prevent ESP32 client buffer overruns."""
+        try:
+            await self.ws.send(frame)
+        except websockets.ConnectionClosed:
+            logger.debug("Client disconnected during audio frame playback.")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending audio frame: {e}", exc_info=True)
+            return False
 
+        self.audio_frames_sent += 1
+        if self.audio_frames_sent <= 3:
+            # Fast burst for initial playback buffer warm-up (3 frames = 180ms buffer)
+            await asyncio.sleep(0.005)
+        else:
+            # Real-time pacing: sleep 55ms for every 60ms frame
+            await asyncio.sleep(0.055)
+        return True
 
-            if idx < 3:
-                # Fast burst for warm-up
-                await asyncio.sleep(0.005)
-            else:
-                # Real-time pacing (55ms per 60ms frame)
-                await asyncio.sleep(0.055)
+    async def send_audio_frames(self, frames: list[bytes]) -> bool:
+        """Send a sequence of audio frames through the stateful pacer."""
+        for frame in frames:
+            if not await self.send_audio_frame(frame):
+                return False
+        return True
 
     async def cancel_active_turn(self):
         """Barge-in interruption: cancel pending LLM and TTS tasks immediately."""
+        self.audio_frames_sent = 0
         if self.active_pipeline_task and not self.active_pipeline_task.done():
             self.active_pipeline_task.cancel()
             try:
@@ -242,6 +251,7 @@ class LocalBrainSession:
         await self.send_json({"type": "stt", "text": transcript})
 
         # 2. LLM + TTS Streaming
+        self.audio_frames_sent = 0
         await self.send_json({"type": "tts", "state": "start"})
 
         full_reply_parts = []
@@ -255,14 +265,19 @@ class LocalBrainSession:
 
             # Progressive streaming of Opus audio frames for this sentence
             await self.send_json({"type": "tts", "state": "sentence_start", "text": sentence})
-            async for opus_frame in self.tts.stream_speech_opus_frames(sentence):
-                if not first_audio_sent:
-                    first_audio_sent = True
-                    speech_to_first_audio = (time.time() - speech_stop_time) * 1000.0
-                    await self.log_latency(transcript, speech_to_first_audio)
-                    logger.info(f"First audio latency: {speech_to_first_audio:.1f}ms")
+            gen = self.tts.stream_speech_opus_frames(sentence)
+            try:
+                async for opus_frame in gen:
+                    if not first_audio_sent:
+                        first_audio_sent = True
+                        speech_to_first_audio = (time.time() - speech_stop_time) * 1000.0
+                        await self.log_latency(transcript, speech_to_first_audio)
+                        logger.info(f"First audio latency: {speech_to_first_audio:.1f}ms")
 
-                await self.send_audio_frames([opus_frame])
+                    if not await self.send_audio_frame(opus_frame):
+                        break
+            finally:
+                await gen.aclose()
 
             await self.send_json({"type": "tts", "state": "sentence_end"})
 

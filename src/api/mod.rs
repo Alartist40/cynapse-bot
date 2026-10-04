@@ -3,7 +3,6 @@ use crate::vision::{Detection, GazeCommand, VisionDetector, VisionTracker};
 use crate::voice::VoiceOrchestrator;
 
 use axum::extract::{DefaultBodyLimit, State};
-use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
@@ -44,8 +43,9 @@ pub struct SayRequest {
 
 #[derive(Serialize)]
 pub struct SayResponse {
+    pub status: String,
     pub text: String,
-    pub audio_bytes_len: usize,
+    pub expression: String,
 }
 
 #[derive(Serialize)]
@@ -101,18 +101,10 @@ async fn stats_handler(State(state): State<Arc<AppState>>) -> Json<StatsResponse
 async fn say_handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<SayRequest>,
-) -> Result<Json<SayResponse>, (StatusCode, String)> {
-    // 1. Synthesize audio first — fail honestly if TTS is offline
-    let audio = state
-        .voice
-        .tts
-        .synthesize(&payload.text)
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, e))?;
-
+) -> Json<SayResponse> {
     let expression = payload.expression.unwrap_or_else(|| "happy".to_string());
 
-    // 2. Publish face and say notification commands after successful synthesis
+    // Publish face and say notification commands over MQTT
     if let Some(bus) = &state.bus {
         if let Err(e) = bus.publish_face(&expression).await {
             tracing::warn!("Failed to publish face command for /say: {}", e);
@@ -122,10 +114,11 @@ async fn say_handler(
         }
     }
 
-    Ok(Json(SayResponse {
+    Json(SayResponse {
+        status: "ok".to_string(),
         text: payload.text,
-        audio_bytes_len: audio.len(),
-    }))
+        expression,
+    })
 }
 
 async fn vision_frame_handler(
