@@ -155,9 +155,26 @@ Phases 1–6 are **substantially implemented** in [Alartist40/cynapse-bot](https
 | 5 | **No real YOLO inference**: `detector.rs` returns empty in real mode; wire `ort` + yolo11s ONNX, then camera source | 8 | 🟡 open |
 | 6 | **No camera feed source**: nobody POSTs to `/api/vision/frame`; start with a USB webcam on the SBC, ESP32-CAM spokes later | 8 | 🟡 open |
 | 7 | ~~`/say` MQTT audio path~~ `/say` now publishes lightweight `SayCommand` JSON + face; no WAV over MQTT (D11) | 5 | ✅ resolved (`4bf29fa`) |
-| 8 | ~~Config default mismatch~~ Documented host-loopback (`127.0.0.1`) vs robot LAN/hotspot broker IP (`192.168.1.50` / `192.168.50.1`) | 2 | ✅ resolved |
+| 8 | ~~Config default mismatch~~ Documented host-loopback (`127.0.0.1`) vs robot LAN/hotspot broker IP (`192.168.1.50` / `192.168.50.1`) | 2 | ✅ resolved (`948f74e`) |
 
 **Note on the resolved items:** gaps #3/#4/#7 were fixed, then a review pass found two regressions (pacing defeated by per-frame calls; sample-rate assumption with no resampling) — both were fixed properly in `4bf29fa` (stateful pacer + `StreamingWavDecoder` with RIFF parsing and phase-preserving 24k→16k resampling, tested across 1 B–64 KB chunk sizes). Lesson encoded: **every "resolved" protocol/audio item must be re-validated against a real device session, not only unit tests.**
+
+#### 8.0.1 Gap #1 Execution Plan (firmware integration)
+
+**Order of operations — validation before firmware work:**
+
+1. **Phase 0 recon on the physical robot** (30 min): M5Burner + esptool backups; determine whether the stock build's WebSocket endpoint is configurable (app settings / NVS `websocket.url` / Kconfig). Record in `docs/phase0-findings.md`. This single answer sizes the whole firmware effort.
+2. **Hub pre-flight** (no robot): run all four services live (Ollama, pocket-tts `serve`, mosquitto, hub) + `fake_device.py` full turn; verify with `curl --no-buffer` that pocket-tts `/tts` flushes progressively (if it buffers the whole response, the streaming pipeline is correct but latency-neutral — know this before blaming the robot).
+3. **Real robot echo session** (Path A if settable, else eid390 flash): robot mic → hub → robot speaker. Capture the real `hello`/`listen`/OTA payloads into `tests/fixtures/` and diff against the hub's handlers. Only then is gap #4 truly closed.
+4. **Merge firmware** (the dual-channel spoke): MQTT body-control task + XiaoZhi voice in one build.
+
+**Firmware merge rules (when step 4 is reached):**
+
+- **Base firmware: official `m5stack/StackChan` preferred** (Mooncake, animations, dances, calibration, `hal_mcp` — the whole personality). eid390 build only as escape hatch for a locked endpoint.
+- **Trap:** in official `main.cpp`, when `startAiAgentOnBoot` is set, Mooncake is skipped and `startXiaozhi()` never returns → a Mooncake-app MQTT spoke never starts. Launch the MQTT spoke from HAL init, not as an app.
+- Disable Wi-Fi power save (`esp_wifi_set_ps(WIFI_PS_NONE)`) — modem sleep adds 100–300 ms to MQTT delivery and fakes "broken" gaze tracking.
+- Pin tasks: audio pipeline on one core; MQTT spoke lower-priority on the other core. Random audio dropouts are usually priority starvation.
+- Verify the pan servo type (positional vs continuous, 1500 µs neutral) **before** writing `servoPan.write()` control code — it decides angle-positioning vs speed+feedback control.
 
 ---
 
