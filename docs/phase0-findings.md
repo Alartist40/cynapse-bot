@@ -19,6 +19,12 @@ Document findings from initial physical device inspection, firmware backups, and
   esptool.py --chip esp32s3 --port /dev/ttyUSB0 read_flash 0x0 0x1000000 docs/flash_backup.bin
   ```
   - Backup Status: `[Pending/Verified]`
+- [ ] **Boot Serial Log Captured (`docs/phase0-boot.log`)**:
+  ```bash
+  # Watch boot sequence and WebSocket connection logs @ 115200 baud
+  picocom -b 115200 /dev/ttyUSB0 | tee docs/phase0-boot.log
+  ```
+  - Serial Log Status: `[Pending/Captured]`
 
 ---
 
@@ -32,7 +38,8 @@ Document findings from initial physical device inspection, firmware backups, and
 ---
 
 ## 4. Handshake & Protocol Observations
-- **Exact WebSocket URI**: `ws://<host>:8100/xiaozhi/v1/`
+- **Stock WebSocket URI Dialed by Device (from serial log)**: `[e.g. wss://api.xiaozhi.me/v1/]`
+- **Target Local Hub URI**: `ws://<host-ip>:8100/xiaozhi/v1/`
 - **Handshake Version & Fields**:
   - `hello` client payload captured to `tests/fixtures/hello_client.json`: `[Pending/Captured]`
   - `listen` start/stop payload captured: `[Pending/Captured]`
