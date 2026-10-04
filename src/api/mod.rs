@@ -64,7 +64,30 @@ pub fn create_api_router(state: Arc<AppState>) -> Router {
             "/api/vision/frame",
             post(vision_frame_handler).layer(DefaultBodyLimit::max(10 * 1024 * 1024)), // 10MB limit
         )
+        .route("/xiaozhi/ota", get(ota_handler).post(ota_handler))
+        .route("/xiaozhi/ota/", get(ota_handler).post(ota_handler))
+        .route("/xiaozhi/ota/activate", get(ota_handler).post(ota_handler))
+        .route("/ota", get(ota_handler).post(ota_handler))
+        .route("/ota/", get(ota_handler).post(ota_handler))
+        .route("/ota/activate", get(ota_handler).post(ota_handler))
         .with_state(state)
+}
+
+async fn ota_handler() -> Json<serde_json::Value> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    Json(serde_json::json!({
+        "websocket": {
+            "url": "ws://192.168.10.129:8100/xiaozhi/v1/",
+            "token": "local-token"
+        },
+        "server_time": {
+            "timestamp": now,
+            "timezone_offset": 0
+        }
+    }))
 }
 
 async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
