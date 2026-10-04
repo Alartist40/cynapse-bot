@@ -10,6 +10,12 @@ pub struct FaceCommand {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SayCommand {
+    pub text: String,
+    pub expression: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TouchEvent {
     pub zone: u8, // 1 to 3
 }
@@ -101,6 +107,18 @@ impl MqttBus {
         let payload = serde_json::to_string(&cmd).map_err(|e| e.to_string())?;
         self.client
             .publish("stackchan/cmd/face", QoS::AtLeastOnce, false, payload)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    pub async fn publish_say(&self, text: &str, expression: &str) -> Result<(), String> {
+        let cmd = SayCommand {
+            text: text.to_string(),
+            expression: expression.to_string(),
+        };
+        let payload = serde_json::to_string(&cmd).map_err(|e| e.to_string())?;
+        self.client
+            .publish("stackchan/cmd/say", QoS::AtLeastOnce, false, payload)
             .await
             .map_err(|e| e.to_string())
     }

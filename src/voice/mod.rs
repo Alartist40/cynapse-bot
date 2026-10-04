@@ -8,12 +8,13 @@ pub use whisper::WhisperClient;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 pub struct VoiceOrchestrator {
     pub whisper: WhisperClient,
     pub llm: OllamaVoiceClient,
     pub tts: PocketTtsClient,
-    last_narration_instant: std::sync::Mutex<Option<Instant>>,
+    last_narration_instant: Mutex<Option<Instant>>,
     narration_cooldown: Duration,
     pub total_conversations: AtomicU64,
 }
@@ -42,7 +43,7 @@ impl VoiceOrchestrator {
                 dev_fallbacks,
             ),
             tts: PocketTtsClient::new(tts_url, tts_voice, dev_fallbacks),
-            last_narration_instant: std::sync::Mutex::new(None),
+            last_narration_instant: Mutex::new(None),
             narration_cooldown: Duration::from_secs(30), // FR-V4: 30s rate limit
             total_conversations: AtomicU64::new(0),
         }
@@ -72,7 +73,7 @@ impl VoiceOrchestrator {
         event_description: &str,
     ) -> Option<(String, Vec<u8>)> {
         {
-            let mut last = self.last_narration_instant.lock().unwrap();
+            let mut last = self.last_narration_instant.lock().await;
             if let Some(prev) = *last {
                 if prev.elapsed() < self.narration_cooldown {
                     return None;

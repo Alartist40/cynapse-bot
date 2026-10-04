@@ -1,3 +1,3 @@
 pub mod mqtt;
 
-pub use mqtt::{FaceCommand, FleetTelemetry, HubStatus, MqttBus, TouchEvent};
+pub use mqtt::{FaceCommand, FleetTelemetry, HubStatus, MqttBus, SayCommand, TouchEvent};

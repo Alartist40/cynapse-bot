@@ -70,3 +70,82 @@ async def test_tts_honest_offline_behavior():
     dev_frames = await tts_dev.generate_speech_opus_frames("Hello test")
     assert len(dev_frames) > 0
     await tts_dev.close()
+
+
+@pytest.mark.asyncio
+async def test_tts_stream_speech_opus_frames():
+    tts_prod = TTSEngine(server_url="http://127.0.0.1:9999", dev_fallbacks=False)
+    prod_stream = [f async for f in tts_prod.stream_speech_opus_frames("Streaming test")]
+    assert prod_stream == []
+    await tts_prod.close()
+
+    tts_dev = TTSEngine(server_url="http://127.0.0.1:9999", dev_fallbacks=True)
+    dev_stream = [f async for f in tts_dev.stream_speech_opus_frames("Streaming test")]
+    assert len(dev_stream) > 0
+    await tts_dev.close()
+
+
+class MockWebSocket:
+    def __init__(self):
+        self.sent_messages = []
+        self.closed = False
+        self.close_code = None
+        self.close_reason = None
+        self.state = 1
+
+    async def send(self, message):
+        self.sent_messages.append(message)
+
+    async def close(self, code=1000, reason=""):
+        self.closed = True
+        self.close_code = code
+        self.close_reason = reason
+        self.state = 3
+
+
+@pytest.mark.asyncio
+async def test_session_protocol_frames(tmp_path):
+    import json
+    from hub.server import LocalBrainSession
+    from hub.stt import STTEngine
+    from hub.llm import LLMEngine
+
+    ws = MockWebSocket()
+    stt = STTEngine(model_size="tiny.en")
+    llm = LLMEngine()
+    tts = TTSEngine(dev_fallbacks=True)
+
+    session = LocalBrainSession(
+        ws=ws,
+        mode="full",
+        stt=stt,
+        llm=llm,
+        tts=tts,
+        protocol_log_path=tmp_path / "protocol.log",
+        latency_log_path=tmp_path / "latency.log",
+    )
+
+    # 1. Hello handshake
+    await session.handle_text_frame(json.dumps({"type": "hello", "version": 2}))
+    assert len(ws.sent_messages) == 1
+    hello_resp = json.loads(ws.sent_messages[0])
+    assert hello_resp["type"] == "hello"
+    assert hello_resp["version"] == 2
+    assert hello_resp["features"]["mcp"] is False
+    assert hello_resp["session_id"] == session.session_id
+
+    # 2. OTA check
+    await session.handle_text_frame(json.dumps({"type": "ota"}))
+    assert len(ws.sent_messages) == 2
+    ota_resp = json.loads(ws.sent_messages[1])
+    assert ota_resp["type"] == "ota"
+    assert ota_resp["status"] == "up_to_date"
+
+    # 3. Goodbye
+    await session.handle_text_frame(json.dumps({"type": "goodbye"}))
+    assert ws.closed is True
+    assert ws.close_code == 1000
+    assert ws.close_reason == "Client goodbye"
+
+    await tts.close()
+

@@ -112,13 +112,13 @@ async fn say_handler(
 
     let expression = payload.expression.unwrap_or_else(|| "happy".to_string());
 
-    // 2. Only publish face and audio commands after successful synthesis
+    // 2. Publish face and say notification commands after successful synthesis
     if let Some(bus) = &state.bus {
         if let Err(e) = bus.publish_face(&expression).await {
             tracing::warn!("Failed to publish face command for /say: {}", e);
         }
-        if let Err(e) = bus.publish_audio(&audio).await {
-            tracing::warn!("Failed to publish audio payload for /say: {}", e);
+        if let Err(e) = bus.publish_say(&payload.text, &expression).await {
+            tracing::warn!("Failed to publish say command for /say: {}", e);
         }
     }
 

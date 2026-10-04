@@ -27,5 +27,5 @@
 
 - [x] G6: Python XiaoZhi Voice Hub streaming audio, earliest boundary & ellipsis chunking, and disconnect safety verified
   CHECK: uv run pytest tests/test_hub.py -v
-  EXPECT: 6 passed
-  EVIDENCE: 6 passed (Verified 2026-10-01)
+  EXPECT: 8 passed
+  EVIDENCE: 8 passed (Verified 2026-10-04)

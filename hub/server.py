@@ -140,10 +140,13 @@ class LocalBrainSession:
 
         if msg_type == "hello":
             logger.info(f"Handshake hello from client (session {self.session_id})")
+            version = data.get("version", 1)
             resp = {
                 "type": "hello",
+                "version": version,
                 "transport": "websocket",
                 "session_id": self.session_id,
+                "features": {"mcp": False},
                 "audio_params": {
                     "format": "opus",
                     "sample_rate": 16000,
@@ -152,6 +155,18 @@ class LocalBrainSession:
                 },
             }
             await self.send_json(resp)
+
+        elif msg_type == "goodbye":
+            logger.info(f"Client goodbye received (session {self.session_id})")
+            await self.cancel_active_turn()
+            await self.ws.close(1000, "Client goodbye")
+
+        elif msg_type == "ota":
+            logger.info(f"Client OTA check received (session {self.session_id})")
+            await self.send_json({
+                "type": "ota",
+                "status": "up_to_date",
+            })
 
         elif msg_type == "listen":
             state = data.get("state")
@@ -238,19 +253,18 @@ class LocalBrainSession:
             full_reply_parts.append(sentence)
             await self.send_json({"type": "llm", "text": sentence})
 
-            # TTS Audio Generation for this sentence
-            opus_frames = await self.tts.generate_speech_opus_frames(sentence)
-
-            if opus_frames:
+            # Progressive streaming of Opus audio frames for this sentence
+            await self.send_json({"type": "tts", "state": "sentence_start", "text": sentence})
+            async for opus_frame in self.tts.stream_speech_opus_frames(sentence):
                 if not first_audio_sent:
                     first_audio_sent = True
                     speech_to_first_audio = (time.time() - speech_stop_time) * 1000.0
                     await self.log_latency(transcript, speech_to_first_audio)
                     logger.info(f"First audio latency: {speech_to_first_audio:.1f}ms")
 
-                await self.send_json({"type": "tts", "state": "sentence_start", "text": sentence})
-                await self.send_audio_frames(opus_frames)
-                await self.send_json({"type": "tts", "state": "sentence_end"})
+                await self.send_audio_frames([opus_frame])
+
+            await self.send_json({"type": "tts", "state": "sentence_end"})
 
         # Record exchange in history
         full_reply = " ".join(full_reply_parts).strip()
@@ -259,6 +273,7 @@ class LocalBrainSession:
             self.history.append({"role": "assistant", "content": full_reply})
 
         await self.send_json({"type": "tts", "state": "stop"})
+
 
 
 class LocalBrainHub:

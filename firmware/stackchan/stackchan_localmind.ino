@@ -29,8 +29,11 @@
 #endif
 
 // Servo Pins (StackChan CoreS3 standard PWM pins)
-
-
+// Note on Kinematics:
+// - Tilt Servo (Y-axis): Standard positional servo (5.0° to 85.0° hard clamp to prevent physical crash).
+// - Pan Servo (X-axis): Some StackChan hardware variants use a continuous-rotation servo or 180/270° servo.
+//   For continuous-rotation variants, pulse widths relative to 1500us control rotational velocity/direction
+//   rather than absolute angle; for standard positional variants, pulse widths map directly to 0-180°.
 const int SERVO_PAN_PIN  = 1;
 const int SERVO_TILT_PIN = 2;
 
@@ -85,6 +88,7 @@ void setup() {
     M5.Lcd.setTextSize(2);
     M5.Lcd.drawString("StackChan LocalMind", 20, 20);
 
+    mqttClient.setBufferSize(1024);
     mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
     mqttClient.setCallback(mqttCallback);
 
@@ -194,6 +198,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         }
     } else if (strcmp(topic, "stackchan/cmd/face") == 0 || strcmp(topic, "stackchan/cmd/emotion") == 0) {
         const char* expr = doc["expression"] | doc["emotion"] | "happy";
+        renderExpression(expr);
+    } else if (strcmp(topic, "stackchan/cmd/say") == 0) {
+        const char* expr = doc["expression"] | "happy";
         renderExpression(expr);
     } else if (strcmp(topic, "stackchan/cmd/audio") == 0 || strcmp(topic, "stackchan/cmd/speak") == 0) {
         // Speaker playback trigger (shows talking indicator on display)

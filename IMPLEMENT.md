@@ -10,3 +10,11 @@
 - `firmware/stackchan/stackchan_localmind.ino`: Dynamic MAC-derived MQTT client ID (`stackchan-{MAC}`), external `config.h` credentials without hardcoded passwords in git, `stackchan/cmd/audio` visual speaking indicator, and hardware tilt clamping.
 - Resolved all Clippy warnings and removed unused dependencies (`tokio-tungstenite`, `tower-http`, `futures-util`, `uuid`, `av`) and orphaned tools.
 - All 6 verification gates passed cleanly (`cargo test` and `uv run pytest tests/test_hub.py`).
+ 
+## 2026-10-04 — Progressive Streaming TTS & Audio Architecture Unification
+- `hub/tts.py`: Implemented progressive `stream_speech_opus_frames(text, voice)` async generator using `httpx.AsyncClient.stream("POST", ...)` to slice incoming PCM chunks directly into 60ms (1920B) Opus frames on-the-fly, reducing first-audio latency.
+- `hub/server.py`: Integrated streaming Opus frame generator in `_execute_full_turn`, added `version` echo and `features: {"mcp": False}` in `hello` response, and added `ota` (`up_to_date`) and `goodbye` session handlers.
+- `src/api/mod.rs` & `src/bus/`: Updated `say_handler` to broadcast expression on `stackchan/cmd/face` and structured JSON on `stackchan/cmd/say` (stopping raw WAV transmission over MQTT; all real-time voice streaming handled via WebSocket :8100).
+- `src/voice/mod.rs`: Converted `last_narration_instant` Mutex from `std::sync::Mutex` to `tokio::sync::Mutex`.
+- `firmware/stackchan/stackchan_localmind.ino`: Increased `mqttClient.setBufferSize(1024)`, added `stackchan/cmd/say` JSON handler, and documented continuous-rotation vs positional pan servo kinematics.
+- `tests/test_hub.py`: Added tests for progressive streaming TTS, handshake features, OTA response, and clean goodbye session termination (8/8 passed). All Rust tests (11/11 passed) and clippy (`0 warnings`) verified.
