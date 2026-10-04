@@ -30,5 +30,14 @@
 
 - [x] **Stage 6: XiaoZhi Protocol Voice Hub & Audio Pacing**
   OWNS: `hub/server.py`, `hub/audio.py`, `hub/llm.py`, `hub/stt.py`, `hub/tts.py`
-  STATUS: WebSocket duplex Opus framing, non-blocking STT, earliest delimiter sentence chunker with ellipsis support, and disconnect safety verified.
+  STATUS: Progressive Pocket-TTS Opus streaming, WebSocket duplex Opus framing, non-blocking STT, earliest delimiter sentence chunker with ellipsis support, disconnect safety, and protocol handshake (features, OTA, goodbye) verified.
   GATE: G6 (MET)
+
+- [ ] **Stage 7: Fleet Hardening & Auto-Discovery**
+  OWNS: systemd/Docker, mDNS advertisement (`_xiaozhi._tcp.local`), firmware calibration/dance commands.
+  STATUS: Planned.
+
+- [ ] **Stage 8: Vision & Perception (Phase 8)**
+  OWNS: `src/vision/detector.rs`, `src/vision/tracker.rs`, `src/api/mod.rs`
+  STATUS: Track state machine & 5–85° tilt clamp verified; CPU-first YOLO via `ort` ONNX, USB camera capture loop, detection-driven narration (`visual_context`), and on-demand VLM stills planned.
+
