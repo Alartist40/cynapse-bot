@@ -64,13 +64,16 @@ else
 fi
 PIDS+=($!)
 
+HOST_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}' || hostname -I | awk '{print $1}' || echo "127.0.0.1")
+
 echo "=========================================================="
 echo "  All Local Mind services are LIVE & READY!"
-echo "  - MQTT Bus & Voice Bridge:  192.168.10.129:1883"
-echo "  - WebSocket Server:          ws://192.168.10.129:8100/xiaozhi/v1/"
-echo "  - Rust Vision & Gaze API:   http://192.168.10.129:8088"
-echo "  - Ollama LLM Engine:        http://127.0.0.1:11434 (ministral-3:3b)"
-echo "  - Pocket-TTS Engine:        http://127.0.0.1:8000"
+echo "  - Current Host LAN IP:       $HOST_IP"
+echo "  - MQTT Bus & Voice Bridge:   $HOST_IP:1883"
+echo "  - WebSocket Server:          ws://$HOST_IP:8100/xiaozhi/v1/"
+echo "  - Rust Vision & Gaze API:    http://$HOST_IP:8088"
+echo "  - Ollama LLM Engine:         http://127.0.0.1:11434 (qwen2.5:3b-instruct)"
+echo "  - Pocket-TTS Engine:         http://127.0.0.1:8000"
 echo "=========================================================="
 echo "Press Ctrl+C to stop all services."
 

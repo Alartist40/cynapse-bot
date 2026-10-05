@@ -73,14 +73,20 @@ pub fn create_api_router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-async fn ota_handler() -> Json<serde_json::Value> {
+async fn ota_handler(headers: axum::http::HeaderMap) -> Json<serde_json::Value> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
+    let host = headers
+        .get("host")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.split(':').next())
+        .unwrap_or("127.0.0.1");
+    let ws_url = format!("ws://{}:8100/xiaozhi/v1/", host);
     Json(serde_json::json!({
         "websocket": {
-            "url": "ws://192.168.10.129:8100/xiaozhi/v1/",
+            "url": ws_url,
             "token": "local-token"
         },
         "server_time": {
